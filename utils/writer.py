@@ -206,7 +206,7 @@ def rewrite_appinfo(
     in_path: os.PathLike[str] | str,
     out_path: os.PathLike[str] | str,
     appids_to_modify: set[int],
-    apply_overrides: Callable[[dict[str, Any]], None],
+    apply_overrides: Callable[[dict[str, Any], int], None],
 ) -> None:
     in_path = str(in_path)
     out_path = str(out_path)
@@ -257,7 +257,7 @@ def rewrite_appinfo(
                 parsed = _read_app_payload(
                     payload, version=version, string_table=string_table
                 )
-                apply_overrides(parsed.kv)
+                apply_overrides(parsed.kv, appid)
                 new_payload = _encode_app_payload(
                     parsed,
                     version=version,

@@ -40,6 +40,15 @@ python main.py /path/to/appinfo.vdf \
 	--json
 ```
 
+Apply per-app changes from a JSON file:
+
+```bash
+python main.py /path/to/appinfo.vdf \
+	--changes-file data/example-changes.json \
+	--appid 730 \
+	--json
+```
+
 ### Generic editing with `--set`
 
 Set an arbitrary KV path using dot notation:
@@ -65,6 +74,14 @@ python main.py /path/to/appinfo.vdf \
 	--appid 10 \
 	--name "Counter-Strike (Modded)" \
 	--aliases "csgo, cs2" \
+	--write-out /tmp/appinfo.vdf
+```
+
+Write using per-app changes from a file:
+
+```bash
+python main.py /path/to/appinfo.vdf \
+	--changes-file data/example-changes.json \
 	--write-out /tmp/appinfo.vdf
 ```
 
