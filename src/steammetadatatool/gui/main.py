@@ -26,15 +26,41 @@ from steammetadatatool.core.keyvalues1 import kv_deep_get
 
 
 def _common_value(data: dict[str, Any], key: str) -> Any:
-    return kv_deep_get(data, "common", key) or kv_deep_get(
-        data, "appinfo", "common", key
-    )
+    value = kv_deep_get(data, "appinfo", "common", key)
+    if value is not None:
+        return value
+    return kv_deep_get(data, "common", key)
 
 
 def _extended_value(data: dict[str, Any], key: str) -> Any:
-    return kv_deep_get(data, "extended", key) or kv_deep_get(
-        data, "appinfo", "extended", key
-    )
+    value = kv_deep_get(data, "appinfo", "extended", key)
+    if value is not None:
+        return value
+    return kv_deep_get(data, "extended", key)
+
+
+def _aliases_value(data: dict[str, Any]) -> Any:
+    value = _common_value(data, "aliases")
+    if value is not None:
+        return value
+
+    value = _extended_value(data, "aliases")
+    if value is not None:
+        return value
+
+    return None
+
+
+def _sort_as_value(data: dict[str, Any]) -> Any:
+    value = _common_value(data, "sortas")
+    if value is not None:
+        return value
+
+    value = _extended_value(data, "sortas")
+    if value is not None:
+        return value
+
+    return None
 
 
 def _format_aliases(value: Any) -> str:
@@ -200,8 +226,8 @@ class MainWindow(QMainWindow):
                     details_by_appid[app.appid] = {
                         "appid": str(app.appid),
                         "name": name or "-",
-                        "sort_as": str(_common_value(app.data, "sortas") or "-"),
-                        "aliases": _format_aliases(_common_value(app.data, "aliases")),
+                        "sort_as": str(_sort_as_value(app.data) or "-"),
+                        "aliases": _format_aliases(_aliases_value(app.data)),
                         "developer": str(_extended_value(app.data, "developer") or "-"),
                         "publisher": str(_extended_value(app.data, "publisher") or "-"),
                         "original_release_date": _format_release_date(
