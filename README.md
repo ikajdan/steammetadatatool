@@ -1,6 +1,6 @@
 # SteamMetadataTool
 
-Reads and rewrites Steam client's `appinfo.vdf`. This lets you:
+A tool for reading and editing Steam client metadata.
 
 - List app IDs and names from your local Steam install.
 - Dump a specific app record as JSON.
@@ -8,93 +8,102 @@ Reads and rewrites Steam client's `appinfo.vdf`. This lets you:
 
 ## Installation
 
-Install the required dependencies:
+The tool is split into two components: a CLI and a GUI.
+
+### CLI
+
+To install the CLI only:
 
 ```bash
-pip install -r requirements.txt
+uv sync
+```
+
+### GUI
+
+To install the GUI and CLI together:
+
+```bash
+uv sync --extra gui
 ```
 
 ## Usage
 
-To launch the GUI, run:
-
-```bash
-python -m gui
-```
+### CLI
 
 List apps:
 
 ```bash
-python main.py /path/to/appinfo.vdf
+uv run steammetadatatool-cli
 ```
 
-Dump an app as a JSON:
+Dump an app as JSON:
 
 ```bash
-python main.py /path/to/appinfo.vdf --appid 730 --json | python -m json.tool
+uv run steammetadatatool-cli --appid 730 --json | python -m json.tool
+```
+
+### GUI
+
+```bash
+uv run --extra gui steammetadatatool-gui
 ```
 
 ## Editing
 
-Apply per-app changes using override flags:
+Apply per-app changes:
 
 ```bash
-python main.py /path/to/appinfo.vdf \
-	--appid 10 \
-	--name "Counter-Strike (Modded)" \
-	--sort-as "CS" \
-	--aliases "csgo, cs2" \
-	--steam-release-date 2000-11-08
+uv run steammetadatatool-cli \
+  --appid 10 \
+  --name "Counter-Strike (Modded)" \
+  --sort-as "CS" \
+  --aliases "csgo, cs2" \
+  --steam-release-date 2000-11-08
 ```
 
-Print the modified appinfo without writing to disk:
+Dry-run (no write):
 
 ```bash
-python main.py /path/to/appinfo.vdf \
-	--appid 10 \
-	--name "Counter-Strike (Modded)" \
-	--dry-run
+uv run steammetadatatool-cli \
+  --appid 10 \
+  --name "Counter-Strike (Modded)" \
+  --dry-run
 ```
 
-Apply per-app changes from a JSON file:
+Apply changes from JSON:
 
 ```bash
-python main.py /path/to/appinfo.vdf \
-	--changes-file data/example-changes.json \
-	--appid 730 \
-	--json
+uv run steammetadatatool-cli \
+  --changes-file data/example-changes.json \
+  --appid 730 \
+  --json
 ```
 
-Persist the effective per-app changes to a JSON changes file:
+Write changes file:
 
 ```bash
-python main.py /path/to/appinfo.vdf \
-	--appid 730 \
-	--name "Counter-Strike 2 (Modded)" \
-	--write-changes-file data/my-changes.json
+uv run steammetadatatool-cli \
+  --appid 730 \
+  --name "Counter-Strike 2 (Modded)" \
+  --write-changes-file data/my-changes.json
 ```
 
-If the target changes file already exists, entries are merged by `appid`. Existing app entries are updated, and new app entries are appended.
-
-Set an arbitrary KV path using dot notation:
+Set arbitrary KV path:
 
 ```bash
-python main.py /path/to/appinfo.vdf \
-	--appid 10 \
-	--set appinfo.common.sortas=CS \
-	--set appinfo.common.original_release_date=946684800 \
-	--json
+uv run steammetadatatool-cli \
+  --appid 10 \
+  --set appinfo.common.sortas=CS \
+  --set appinfo.common.original_release_date=946684800 \
+  --json
 ```
 
 ### Write to a new file
 
-By default, override flags rewrite the original file in place and create a `.bak` backup.
-Use `--write-out` to write to a separate file instead.
-
 ```bash
-python main.py /path/to/appinfo.vdf \
-	--appid 10 \
-	--name "Counter-Strike (Modded)" \
-	--aliases "csgo, cs2" \
-	--write-out /tmp/appinfo.vdf
+uv run steammetadatatool-cli \
+  --appid 10 \
+  --name "Counter-Strike (Modded)" \
+  --aliases "csgo, cs2" \
+  --write-out /tmp/appinfo.vdf
 ```

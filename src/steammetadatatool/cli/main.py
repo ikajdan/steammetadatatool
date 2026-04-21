@@ -1,0 +1,132 @@
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from steammetadatatool.core.models import CliRequest, OverrideInput
+from steammetadatatool.core.services import parse_aliases, parse_set_arg
+from steammetadatatool.core.use_cases import execute_cli_request
+
+
+def _aliases_arg(raw: str) -> list[str]:
+    try:
+        return parse_aliases(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc))
+
+
+def _set_arg(raw: str):
+    try:
+        return parse_set_arg(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc))
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="steam_appinfo_parser",
+        description="A tool for reading and editing Steam client metadata.",
+    )
+    parser.add_argument(
+        "path",
+        nargs="?",
+        help="Path to appinfo.vdf (defaults to auto-detected Steam install)",
+    )
+    parser.add_argument("--appid", type=int, action="append", help="Filter by appid")
+
+    parser.add_argument("--name", help="Override common.name")
+    parser.add_argument("--sort-as", dest="sort_as", help="Override common.sortas")
+    parser.add_argument(
+        "--aliases",
+        type=_aliases_arg,
+        help='Override common.aliases (comma-separated or JSON array, e.g. "foo,bar" or ["foo","bar"])',
+    )
+    parser.add_argument("--developer", help="Override extended.developer")
+    parser.add_argument("--publisher", help="Override extended.publisher")
+    parser.add_argument(
+        "--original-release-date",
+        dest="original_release_date",
+        help="Override common.original_release_date (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--steam-release-date",
+        dest="steam_release_date",
+        help="Override common.steam_release_date (YYYY-MM-DD)",
+    )
+    parser.add_argument(
+        "--set",
+        dest="set_values",
+        action="append",
+        type=_set_arg,
+        help="Generic override: PATH=VALUE (PATH uses dots, e.g. common.name=Foo)",
+    )
+    parser.add_argument(
+        "--changes-file",
+        dest="changes_file",
+        type=Path,
+        help="Apply per-app overrides from a JSON file (see data/example-changes.json)",
+    )
+    parser.add_argument(
+        "--write-changes-file",
+        dest="write_changes_file",
+        type=Path,
+        help="Also write effective changes to this JSON file (append by appid, overwrite existing entries)",
+    )
+    parser.add_argument(
+        "--write-out",
+        dest="write_out",
+        type=Path,
+        help="Write a modified appinfo.vdf to this path instead of overwriting the input",
+    )
+    parser.add_argument(
+        "--dry-run",
+        dest="dry_run",
+        action="store_true",
+        help="Print modified records without writing any files",
+    )
+    parser.add_argument(
+        "--json",
+        dest="as_json",
+        action="store_true",
+        help="Print full record(s) as JSON (otherwise prints a compact list)",
+    )
+    return parser
+
+
+def main() -> int:
+    parser = _build_parser()
+    args = parser.parse_args()
+
+    request = CliRequest(
+        path=Path(args.path) if args.path else None,
+        appids=args.appid,
+        overrides=OverrideInput(
+            name=args.name,
+            sort_as=args.sort_as,
+            aliases=args.aliases,
+            developer=args.developer,
+            publisher=args.publisher,
+            original_release_date=args.original_release_date,
+            steam_release_date=args.steam_release_date,
+            set_values=args.set_values,
+        ),
+        changes_file=args.changes_file,
+        write_changes_file=args.write_changes_file,
+        write_out=args.write_out,
+        dry_run=args.dry_run,
+        as_json=args.as_json,
+    )
+
+    try:
+        result = execute_cli_request(request)
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    for line in result.lines:
+        print(line)
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
