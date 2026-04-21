@@ -6,7 +6,21 @@ Reads and rewrites Steam client's `appinfo.vdf`. This lets you:
 - Dump a specific app record as JSON.
 - Make simple edits to the name, sort-as, aliases, release dates, etc.
 
+## Installation
+
+Install the required dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
 ## Usage
+
+To launch the GUI, run:
+
+```bash
+python -m gui
+```
 
 List apps:
 
