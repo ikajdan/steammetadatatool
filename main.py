@@ -401,7 +401,7 @@ def _apply_overrides_for_app(
 
 def _timestamped_backup_path(path: Path) -> Path:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
-    candidate = path.with_name(path.name + stamp + ".bak")
+    candidate = path.with_name(path.name + "_" + stamp + ".bak")
 
     if candidate.exists():
         raise RuntimeError("backup filename already exists: " + str(candidate))
@@ -412,7 +412,7 @@ def _timestamped_backup_path(path: Path) -> Path:
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="steam_appinfo_parser",
-        description="Read Steam client's appcache/appinfo.vdf (binary) and print app info.",
+        description="Read and modify Steam's appinfo.vdf file.",
     )
     parser.add_argument(
         "path",
@@ -445,19 +445,19 @@ def main() -> int:
         dest="set_values",
         action="append",
         type=_parse_set_arg,
-        help="Generic override: PATH=VALUE (PATH uses dots, e.g. common.name=Foo)",
+        help="Set an arbitrary value by PATH=VALUE, where PATH is a dot-separated path to a field",
     )
     parser.add_argument(
         "--changes-file",
         dest="changes_file",
         type=Path,
-        help="Apply per-app overrides from a JSON file (see data/example-changes.json)",
+        help="Apply per-app overrides from a JSON file",
     )
     parser.add_argument(
         "--write-changes-file",
         dest="write_changes_file",
         type=Path,
-        help="Also write effective changes to this JSON file (append by appid, overwrite existing entries)",
+        help="Write effective changes to this JSON file",
     )
 
     parser.add_argument(
@@ -470,13 +470,13 @@ def main() -> int:
         "--dry-run",
         dest="dry_run",
         action="store_true",
-        help="Do not write any files; only print resulting records",
+        help="Do not write any files",
     )
     parser.add_argument(
         "--json",
         dest="as_json",
         action="store_true",
-        help="Print full record(s) as JSON (otherwise prints a compact list)",
+        help="Print the output as JSON (otherwise prints a compact list)",
     )
     args = parser.parse_args()
 
@@ -564,6 +564,9 @@ def main() -> int:
                 _write_changes_file(args.write_changes_file, effective_changes)
             except argparse.ArgumentTypeError as e:
                 parser.error(str(e))
+
+    if has_overrides and not args.dry_run:
+        return 0
 
     with AppInfoFile.open(path) as appinfo:
         if args.as_json:
