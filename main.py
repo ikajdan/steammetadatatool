@@ -358,13 +358,13 @@ def main() -> int:
         "--write-out",
         dest="write_out",
         type=Path,
-        help="Write a modified appinfo.vdf to this path (does not modify the input)",
+        help="Write a modified appinfo.vdf to this path instead of overwriting the input",
     )
     parser.add_argument(
-        "--in-place",
-        dest="in_place",
+        "--dry-run",
+        dest="dry_run",
         action="store_true",
-        help="Rewrite the input file in-place (creates a .bak backup)",
+        help="Do not write any files; only print resulting records",
     )
     parser.add_argument(
         "--json",
@@ -390,22 +390,23 @@ def main() -> int:
     if path is None or not path.exists():
         parser.error("Could not locate appinfo.vdf")
 
-    if args.write_out and args.in_place:
-        parser.error("Use only one of --write-out or --in-place")
+    if args.dry_run and args.write_out:
+        parser.error("--dry-run cannot be used together with --write-out")
 
-    if args.write_out or args.in_place:
+    has_overrides = _has_any_overrides(args) or bool(file_changes)
+    should_write = has_overrides and not args.dry_run
+
+    if should_write:
         if not args.appid and not file_changes:
             parser.error(
                 "Write-back requires at least one --appid or a non-empty --changes-file"
             )
-        if not _has_any_overrides(args) and not file_changes:
-            parser.error("Write-back requested but no override flags were provided")
 
         appids = (
             {int(a) for a in args.appid} if args.appid else set(file_changes.keys())
         )
 
-        if args.write_out:
+        if args.write_out is not None:
             out_path = args.write_out
             rewrite_appinfo(
                 in_path=path,

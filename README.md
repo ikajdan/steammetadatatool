@@ -11,16 +11,10 @@ Reads and rewrites Steam client's `appinfo.vdf`. This lets you:
 List apps:
 
 ```bash
-python main.py
-```
-
-List apps from an explicit file:
-
-```bash
 python main.py /path/to/appinfo.vdf
 ```
 
-Dump one app as JSON:
+Dump an app as a JSON:
 
 ```bash
 python main.py /path/to/appinfo.vdf --appid 730 --json | python -m json.tool
@@ -28,16 +22,22 @@ python main.py /path/to/appinfo.vdf --appid 730 --json | python -m json.tool
 
 ## Editing
 
-These flags change the output you see, but do not write back to disk unless you also use `--write-out` or `--in-place`.
-
 ```bash
 python main.py /path/to/appinfo.vdf \
 	--appid 10 \
 	--name "Counter-Strike (Modded)" \
 	--sort-as "CS" \
 	--aliases "csgo, cs2" \
-	--steam-release-date 2000-11-08 \
-	--json
+	--steam-release-date 2000-11-08
+```
+
+Print the modified appinfo without writing to disk:
+
+```bash
+python main.py /path/to/appinfo.vdf \
+	--appid 10 \
+	--name "Counter-Strike (Modded)" \
+	--dry-run
 ```
 
 Apply per-app changes from a JSON file:
@@ -49,8 +49,6 @@ python main.py /path/to/appinfo.vdf \
 	--json
 ```
 
-### Generic editing with `--set`
-
 Set an arbitrary KV path using dot notation:
 
 ```bash
@@ -61,13 +59,10 @@ python main.py /path/to/appinfo.vdf \
 	--json
 ```
 
-## Write-back
-
-Modifies the appinfo in memory, then writes it back to disk. You can choose to write to a new file or rewrite the original.
-
 ### Write to a new file
 
-Writes the modified appinfo to a new file, leaving the original unchanged.
+By default, override flags rewrite the original file in place and create a `.bak` backup.
+Use `--write-out` to write to a separate file instead.
 
 ```bash
 python main.py /path/to/appinfo.vdf \
@@ -75,23 +70,4 @@ python main.py /path/to/appinfo.vdf \
 	--name "Counter-Strike (Modded)" \
 	--aliases "csgo, cs2" \
 	--write-out /tmp/appinfo.vdf
-```
-
-Write using per-app changes from a file:
-
-```bash
-python main.py /path/to/appinfo.vdf \
-	--changes-file data/example-changes.json \
-	--write-out /tmp/appinfo.vdf
-```
-
-### Rewrite in place
-
-Rewrites the original file with the modified appinfo.
-
-```bash
-python main.py /path/to/appinfo.vdf \
-	--appid 10 \
-	--name "Counter-Strike (Modded)" \
-	--in-place
 ```
