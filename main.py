@@ -295,18 +295,13 @@ def _apply_overrides_for_app(
 
 
 def _timestamped_backup_path(path: Path) -> Path:
-
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
-    candidate = path.with_name(path.name + ".bak." + stamp)
-    if not candidate.exists():
-        return candidate
+    candidate = path.with_name(path.name + stamp + ".bak")
 
-    for i in range(1, 1000):
-        candidate_i = path.with_name(path.name + ".bak." + stamp + f".{i}")
-        if not candidate_i.exists():
-            return candidate_i
+    if candidate.exists():
+        raise RuntimeError("backup filename already exists: " + str(candidate))
 
-    raise RuntimeError("could not find a free backup filename")
+    return candidate
 
 
 def main() -> int:
