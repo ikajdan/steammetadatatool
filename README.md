@@ -6,7 +6,7 @@ Reads and rewrites Steam client's `appinfo.vdf`. This lets you:
 - Dump a specific app record as JSON.
 - Make simple edits to the name, sort-as, aliases, release dates, etc.
 
-## Quickstart
+## Usage
 
 List apps:
 
@@ -21,6 +21,8 @@ python main.py /path/to/appinfo.vdf --appid 730 --json | python -m json.tool
 ```
 
 ## Editing
+
+Apply per-app changes using override flags:
 
 ```bash
 python main.py /path/to/appinfo.vdf \
@@ -48,6 +50,17 @@ python main.py /path/to/appinfo.vdf \
 	--appid 730 \
 	--json
 ```
+
+Persist the effective per-app changes to a JSON changes file:
+
+```bash
+python main.py /path/to/appinfo.vdf \
+	--appid 730 \
+	--name "Counter-Strike 2 (Modded)" \
+	--write-changes-file data/my-changes.json
+```
+
+If the target changes file already exists, entries are merged by `appid`. Existing app entries are updated, and new app entries are appended.
 
 Set an arbitrary KV path using dot notation:
 

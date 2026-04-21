@@ -13,6 +13,15 @@ from utils.appinfo import AppInfoFile, find_steam_appinfo_path
 from utils.writer import rewrite_appinfo
 
 ChangeMap = dict[int, dict[str, Any]]
+CHANGE_FIELDS = (
+    "name",
+    "sort_as",
+    "aliases",
+    "developer",
+    "publisher",
+    "original_release_date",
+    "steam_release_date",
+)
 
 
 def _deep_set(obj: dict[str, Any], path: list[str], value: Any) -> None:
@@ -168,6 +177,102 @@ def _load_changes_file(path: Path) -> ChangeMap:
         if appid in out:
             out[appid].update(values)
         else:
+            out[appid] = values
+
+    return out
+
+
+def _changes_map_to_apps(changes: ChangeMap) -> list[dict[str, Any]]:
+    apps: list[dict[str, Any]] = []
+    for appid in sorted(changes.keys()):
+        entry = {"appid": appid}
+        for key in CHANGE_FIELDS:
+            if key in changes[appid]:
+                entry[key] = changes[appid][key]
+        apps.append(entry)
+    return apps
+
+
+def _write_changes_file(path: Path, changes: ChangeMap) -> None:
+    merged: ChangeMap = {}
+    payload: dict[str, Any] = {}
+
+    if path.exists():
+        try:
+            raw_text = path.read_text(encoding="utf-8")
+            payload = json.loads(raw_text)
+        except OSError as e:
+            raise argparse.ArgumentTypeError(
+                f"could not read --write-changes-file: {e}"
+            )
+        except json.JSONDecodeError as e:
+            raise argparse.ArgumentTypeError(
+                f"invalid JSON in --write-changes-file target: {e}"
+            )
+
+        if not isinstance(payload, dict):
+            raise argparse.ArgumentTypeError(
+                "--write-changes-file target must contain a JSON object"
+            )
+
+        try:
+            merged = _load_changes_file(path)
+        except argparse.ArgumentTypeError as e:
+            raise argparse.ArgumentTypeError(f"invalid existing changes file: {e}")
+
+    for appid, values in changes.items():
+        if appid in merged:
+            merged[appid].update(values)
+        else:
+            merged[appid] = dict(values)
+
+    output = {
+        "format": payload.get("format", "appinfo-changes"),
+        "version": payload.get("version", 1),
+        "created_at": payload.get("created_at")
+        or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "apps": _changes_map_to_apps(merged),
+    }
+
+    try:
+        path.write_text(
+            json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    except OSError as e:
+        raise argparse.ArgumentTypeError(f"could not write --write-changes-file: {e}")
+
+
+def _cli_override_values(args: argparse.Namespace) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    if args.name is not None:
+        values["name"] = args.name
+    if args.sort_as is not None:
+        values["sort_as"] = args.sort_as
+    if args.aliases is not None:
+        values["aliases"] = args.aliases
+    if args.developer is not None:
+        values["developer"] = args.developer
+    if args.publisher is not None:
+        values["publisher"] = args.publisher
+    if args.original_release_date is not None:
+        values["original_release_date"] = args.original_release_date
+    if args.steam_release_date is not None:
+        values["steam_release_date"] = args.steam_release_date
+    return values
+
+
+def _effective_changes_for_appids(
+    appids: set[int], args: argparse.Namespace, file_changes: ChangeMap
+) -> ChangeMap:
+    out: ChangeMap = {}
+    cli_values = _cli_override_values(args)
+
+    for appid in appids:
+        values: dict[str, Any] = {}
+        values.update(cli_values)
+        if appid in file_changes:
+            values.update(file_changes[appid])
+        if values:
             out[appid] = values
 
     return out
@@ -348,6 +453,12 @@ def main() -> int:
         type=Path,
         help="Apply per-app overrides from a JSON file (see data/example-changes.json)",
     )
+    parser.add_argument(
+        "--write-changes-file",
+        dest="write_changes_file",
+        type=Path,
+        help="Also write effective changes to this JSON file (append by appid, overwrite existing entries)",
+    )
 
     parser.add_argument(
         "--write-out",
@@ -387,6 +498,8 @@ def main() -> int:
 
     if args.dry_run and args.write_out:
         parser.error("--dry-run cannot be used together with --write-out")
+    if args.dry_run and args.write_changes_file:
+        parser.error("--dry-run cannot be used together with --write-changes-file")
 
     has_overrides = _has_any_overrides(args) or bool(file_changes)
     should_write = has_overrides and not args.dry_run
@@ -442,6 +555,15 @@ def main() -> int:
                         os.unlink(tmp_path)
                     except OSError:
                         pass
+
+        if args.write_changes_file is not None:
+            try:
+                effective_changes = _effective_changes_for_appids(
+                    appids, args, file_changes
+                )
+                _write_changes_file(args.write_changes_file, effective_changes)
+            except argparse.ArgumentTypeError as e:
+                parser.error(str(e))
 
     with AppInfoFile.open(path) as appinfo:
         if args.as_json:
