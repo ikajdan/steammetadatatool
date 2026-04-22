@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -260,6 +261,41 @@ def _format_release_date(value: Any) -> str:
         return str(unix_value)
 
 
+def _has_meaningful_metadata(
+    value: Any,
+    *,
+    ignored_keys: frozenset[str] = frozenset({"appid", "name"}),
+) -> bool:
+    if value is None:
+        return False
+
+    if isinstance(value, dict):
+        for key, nested_value in value.items():
+            if key in ignored_keys:
+                continue
+            if _has_meaningful_metadata(nested_value, ignored_keys=ignored_keys):
+                return True
+        return False
+
+    if isinstance(value, (list, tuple, set)):
+        return any(
+            _has_meaningful_metadata(item, ignored_keys=ignored_keys) for item in value
+        )
+
+    if isinstance(value, str):
+        return bool(value.strip())
+
+    return True
+
+
+def _matches_game_filter(data: dict[str, Any]) -> bool:
+    app_type = str(_common_value(data, "type") or "").strip().casefold()
+    if app_type != "game":
+        return False
+
+    return _has_meaningful_metadata(data)
+
+
 class PreviewPixmapLabel(QLabel):
     def __init__(
         self,
@@ -424,6 +460,7 @@ class MainWindow(QMainWindow):
         self._assets_heading: QLabel | None = None
         self._assets_separator: QFrame | None = None
         self._assets_widget: QWidget | None = None
+        self._filter_matches_by_appid: dict[int, bool] = {}
         self._pixmap_cache: dict[str, QPixmap] = {}
         self._composited_hero_cache: dict[tuple[str, str, str], QPixmap] = {}
         self._asset_image_specs: dict[str, tuple[int, int]] = {
@@ -453,6 +490,25 @@ class MainWindow(QMainWindow):
         self._search_input.setClearButtonEnabled(True)
         self._search_input.textChanged.connect(self._apply_table_filter)
 
+        filter_icon = QIcon.fromTheme(
+            "view-filter",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
+        )
+        self._filter_button = QToolButton()
+        button_size = self._search_input.sizeHint().height()
+        filter_icon_color = self.palette().placeholderText().color()
+        self._filter_button.setIcon(
+            QIcon(_monochrome_icon_pixmap(filter_icon, 18, filter_icon_color))
+        )
+        self._filter_button.setToolTip("Show only games with metadata")
+        self._filter_button.setAutoRaise(True)
+        self._filter_button.setCheckable(True)
+        self._filter_button.setFixedSize(button_size, button_size)
+        self._filter_button.setIconSize(self._filter_button.size() * 0.55)
+        self._filter_button.toggled.connect(
+            lambda _checked: self._apply_table_filter(self._search_input.text())
+        )
+
         self._table = QTableWidget(0, 2)
         self._table.setHorizontalHeaderLabels(["App ID", "Name"])
         self._table.verticalHeader().setVisible(False)
@@ -476,7 +532,15 @@ class MainWindow(QMainWindow):
         list_layout = QVBoxLayout(list_widget)
         list_layout.setContentsMargins(0, 0, 0, 0)
         list_layout.setSpacing(8)
-        list_layout.addWidget(self._search_input)
+
+        search_row = QWidget()
+        search_row_layout = QHBoxLayout(search_row)
+        search_row_layout.setContentsMargins(0, 0, 0, 0)
+        search_row_layout.setSpacing(8)
+        search_row_layout.addWidget(self._search_input, 1)
+        search_row_layout.addWidget(self._filter_button, 0)
+
+        list_layout.addWidget(search_row)
         list_layout.addWidget(self._table)
 
         details_widget = QWidget()
@@ -681,6 +745,7 @@ class MainWindow(QMainWindow):
         try:
             rows: list[tuple[int, str]] = []
             details_by_appid: dict[int, dict[str, Any]] = {}
+            filter_matches_by_appid: dict[int, bool] = {}
 
             with AppInfoFile.open(path_obj) as appinfo:
                 for app in appinfo.iter_apps():
@@ -689,6 +754,7 @@ class MainWindow(QMainWindow):
                         continue
 
                     rows.append((app.appid, name))
+                    filter_matches_by_appid[app.appid] = _matches_game_filter(app.data)
 
                     asset_paths = _asset_paths_for_app(app.appid)
 
@@ -717,6 +783,7 @@ class MainWindow(QMainWindow):
             return
 
         self._details_by_appid = details_by_appid
+        self._filter_matches_by_appid = filter_matches_by_appid
 
         self._table.setSortingEnabled(False)
         self._table.setRowCount(len(rows))
@@ -996,10 +1063,20 @@ class MainWindow(QMainWindow):
 
             appid_text = appid_item.text()
             name_text = name_item.text()
-            matches = not self._search_text or (
+            matches_search = not self._search_text or (
                 self._search_text in appid_text.casefold()
                 or self._search_text in name_text.casefold()
             )
+            matches_filter = True
+            if self._filter_button.isChecked():
+                try:
+                    matches_filter = self._filter_matches_by_appid.get(
+                        int(appid_text), False
+                    )
+                except ValueError:
+                    matches_filter = False
+
+            matches = matches_search and matches_filter
             self._table.setRowHidden(row, not matches)
 
             if matches and first_visible_row is None:
