@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtGui import QIcon, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFormLayout,
@@ -204,11 +204,13 @@ class PreviewPixmapLabel(QLabel):
         placeholder: QPixmap,
         parent: QWidget | None = None,
         *,
+        corner_radius: float = 0.0,
         show_placeholder_frame: bool = True,
     ) -> None:
         super().__init__(parent)
         self._source_pixmap: QPixmap | None = None
         self._placeholder_pixmap = placeholder
+        self._corner_radius = corner_radius
         self._show_placeholder_frame = show_placeholder_frame
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setFrameShape(
@@ -257,13 +259,34 @@ class PreviewPixmapLabel(QLabel):
             return
 
         self.setFrameShape(QFrame.Shape.NoFrame)
-        self.setPixmap(
-            pixmap.scaled(
-                self.size(),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
+        scaled_pixmap = pixmap.scaled(
+            self.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
         )
+        if self._corner_radius > 0:
+            scaled_pixmap = self._rounded_pixmap(scaled_pixmap)
+        self.setPixmap(scaled_pixmap)
+
+    def _rounded_pixmap(self, pixmap: QPixmap) -> QPixmap:
+        rounded = QPixmap(pixmap.size())
+        rounded.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(rounded)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        path = QPainterPath()
+        path.addRoundedRect(
+            0,
+            0,
+            float(pixmap.width()),
+            float(pixmap.height()),
+            self._corner_radius,
+            self._corner_radius,
+        )
+        painter.setClipPath(path)
+        painter.drawPixmap(0, 0, pixmap)
+        painter.end()
+        return rounded
 
 
 class RatioPreviewPixmapLabel(PreviewPixmapLabel):
@@ -273,8 +296,16 @@ class RatioPreviewPixmapLabel(PreviewPixmapLabel):
         ratio_width: int,
         ratio_height: int,
         parent: QWidget | None = None,
+        *,
+        corner_radius: float = 0.0,
+        show_placeholder_frame: bool = True,
     ) -> None:
-        super().__init__(placeholder, parent)
+        super().__init__(
+            placeholder,
+            parent,
+            corner_radius=corner_radius,
+            show_placeholder_frame=show_placeholder_frame,
+        )
         self._ratio_width = ratio_width
         self._ratio_height = ratio_height
 
@@ -322,6 +353,7 @@ class MainWindow(QMainWindow):
             self._missing_asset_pixmap(32, 32),
             2,
             3,
+            corner_radius=16,
         )
 
         self._search_input = QLineEdit()
@@ -476,11 +508,11 @@ class MainWindow(QMainWindow):
         details_outer_layout.addWidget(assets_widget)
 
         asset_fields = (
-            ("header_path", "Header", (460, 215), None, None),
-            ("hero_path", "Hero", (384, 124), 96, 31),
-            ("logo_path", "Logo", (300, 120), None, None),
+            ("header_path", "Header", (460, 215), None, None, 16),
+            ("hero_path", "Hero", (384, 124), 96, 31, 16),
+            ("logo_path", "Logo", (300, 120), None, None, 0),
         )
-        for key, title, size, ratio_width, ratio_height in asset_fields:
+        for key, title, size, ratio_width, ratio_height, corner_radius in asset_fields:
             asset_box = QWidget()
             asset_box_layout = QVBoxLayout(asset_box)
             asset_box_layout.setContentsMargins(0, 0, 0, 0)
@@ -496,11 +528,13 @@ class MainWindow(QMainWindow):
                     self._missing_asset_pixmap(preview_width, preview_height),
                     ratio_width,
                     ratio_height,
+                    corner_radius=corner_radius,
                 )
                 preview_label.setMinimumWidth(0)
             else:
                 preview_label = PreviewPixmapLabel(
-                    self._missing_asset_pixmap(preview_width, preview_height)
+                    self._missing_asset_pixmap(preview_width, preview_height),
+                    corner_radius=corner_radius,
                 )
                 preview_label.setMinimumSize(preview_width, preview_height)
                 preview_label.setMaximumSize(preview_width, preview_height)
