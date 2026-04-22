@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon, QPainter, QPainterPath, QPixmap
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFormLayout,
@@ -128,6 +128,23 @@ def _asset_paths_for_app(appid: int) -> dict[str, str]:
     }
 
 
+def _monochrome_icon_pixmap(icon: QIcon, size: int, color: QColor) -> QPixmap:
+    pixmap = icon.pixmap(size, size)
+    if pixmap.isNull():
+        return pixmap
+
+    monochrome = QPixmap(pixmap.size())
+    monochrome.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(monochrome)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+    painter.drawPixmap(0, 0, pixmap)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    painter.fillRect(monochrome.rect(), color)
+    painter.end()
+    return monochrome
+
+
 def _common_value(data: dict[str, Any], key: str) -> Any:
     value = kv_deep_get(data, "appinfo", "common", key)
     if value is not None:
@@ -247,15 +264,7 @@ class PreviewPixmapLabel(QLabel):
                 if self._show_placeholder_frame
                 else QFrame.Shape.NoFrame
             )
-            icon_size = min(self.width(), self.height(), 32)
-            self.setPixmap(
-                pixmap.scaled(
-                    icon_size,
-                    icon_size,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-            )
+            self.setPixmap(self._placeholder_display_pixmap())
             return
 
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -267,6 +276,30 @@ class PreviewPixmapLabel(QLabel):
         if self._corner_radius > 0:
             scaled_pixmap = self._rounded_pixmap(scaled_pixmap)
         self.setPixmap(scaled_pixmap)
+
+    def _placeholder_display_pixmap(self) -> QPixmap:
+        target_size = self.size()
+        if target_size.width() <= 0 or target_size.height() <= 0:
+            return QPixmap()
+
+        canvas = QPixmap(target_size)
+        canvas.fill(self.palette().alternateBase().color())
+
+        icon_size = min(target_size.width(), target_size.height(), 32)
+        placeholder = self._placeholder_pixmap.scaled(
+            icon_size,
+            icon_size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+        painter = QPainter(canvas)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        x = (target_size.width() - placeholder.width()) // 2
+        y = (target_size.height() - placeholder.height()) // 2
+        painter.drawPixmap(x, y, placeholder)
+        painter.end()
+        return canvas
 
     def _rounded_pixmap(self, pixmap: QPixmap) -> QPixmap:
         rounded = QPixmap(pixmap.size())
@@ -362,8 +395,9 @@ class MainWindow(QMainWindow):
             "edit-find",
             self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView),
         )
+        search_icon_color = self.palette().placeholderText().color()
         self._search_input.addAction(
-            search_icon,
+            QIcon(_monochrome_icon_pixmap(search_icon, 16, search_icon_color)),
             QLineEdit.ActionPosition.LeadingPosition,
         )
         self._search_input.setClearButtonEnabled(True)
@@ -474,7 +508,6 @@ class MainWindow(QMainWindow):
                 preview_width, preview_height = self._asset_image_specs[key]
                 value_label = PreviewPixmapLabel(
                     self._missing_asset_pixmap(preview_width, preview_height),
-                    show_placeholder_frame=key != "icon_path",
                 )
                 value_label.setMinimumSize(preview_width, preview_height)
                 value_label.setMaximumSize(preview_width, preview_height)
@@ -680,8 +713,29 @@ class MainWindow(QMainWindow):
 
     def _missing_asset_pixmap(self, width: int, height: int) -> QPixmap:
         icon_size = min(width, height, 32)
-        icon = self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion)
-        return icon.pixmap(icon_size, icon_size)
+        icon_color = self.palette().placeholderText().color()
+        background_color = self.palette().alternateBase().color()
+        pixmap = QPixmap(icon_size, icon_size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(background_color)
+        painter.drawRoundedRect(
+            pixmap.rect().adjusted(1, 1, -1, -1),
+            4,
+            4,
+        )
+
+        font = painter.font()
+        font.setBold(True)
+        font.setPixelSize(max(12, int(icon_size * 0.8)))
+        painter.setFont(font)
+        painter.setPen(icon_color)
+        painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "?")
+        painter.end()
+        return pixmap
 
     def _on_selection_changed(self) -> None:
         selected = self._table.selectedItems()
