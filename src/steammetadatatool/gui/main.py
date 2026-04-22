@@ -504,7 +504,10 @@ class MainWindow(QMainWindow):
 
             with AppInfoFile.open(path_obj) as appinfo:
                 for app in appinfo.iter_apps():
-                    name = app.name or ""
+                    name = (app.name or "").strip()
+                    if not name:
+                        continue
+
                     rows.append((app.appid, name))
 
                     asset_paths = _asset_paths_for_app(app.appid)
