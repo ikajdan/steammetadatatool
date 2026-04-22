@@ -117,15 +117,59 @@ def _asset_paths_for_app(appid: int) -> dict[str, str]:
 
     return {
         "header_path": _find_asset_file(
-            app_cache_dir, "header.jpg", "library_header.jpg"
+            app_cache_dir, "header.jpg", "library_header.jpg", "header_2x.jpg"
         ),
         "capsule_path": _find_asset_file(
-            app_cache_dir, "library_600x900.jpg", "library_capsule.jpg"
+            app_cache_dir,
+            "library_600x900.jpg",
+            "library_600x900_2x.jpg",
+            "library_capsule.jpg",
         ),
-        "hero_path": _find_asset_file(app_cache_dir, "library_hero.jpg"),
-        "logo_path": _find_asset_file(app_cache_dir, "logo.png"),
+        "hero_path": _find_asset_file(
+            app_cache_dir, "library_hero.jpg", "library_hero_2x.jpg"
+        ),
+        "logo_path": _find_asset_file(app_cache_dir, "logo.png", "logo_2x.png"),
         "icon_path": _cached_icon_path(appid),
     }
+
+
+def _library_logo_position(data: dict[str, Any]) -> dict[str, Any] | None:
+    position = kv_deep_get(
+        data,
+        "appinfo",
+        "common",
+        "library_assets_full",
+        "library_logo",
+        "logo_position",
+    )
+    if isinstance(position, dict):
+        return position
+
+    position = kv_deep_get(data, "appinfo", "common", "library_assets", "logo_position")
+    if isinstance(position, dict):
+        return position
+
+    position = kv_deep_get(
+        data, "common", "library_assets_full", "library_logo", "logo_position"
+    )
+    if isinstance(position, dict):
+        return position
+
+    position = kv_deep_get(data, "common", "library_assets", "logo_position")
+    return position if isinstance(position, dict) else None
+
+
+def _float_value(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+
+    return None
 
 
 def _monochrome_icon_pixmap(icon: QIcon, size: int, color: QColor) -> QPixmap:
@@ -372,13 +416,18 @@ class MainWindow(QMainWindow):
         self.resize(1200, 560)
         self.setMinimumSize(980, 520)
 
-        self._details_by_appid: dict[int, dict[str, str]] = {}
+        self._details_by_appid: dict[int, dict[str, Any]] = {}
         self._detail_labels: dict[str, QLabel] = {}
         self._asset_image_labels: dict[str, QLabel] = {}
+        self._asset_boxes: dict[str, QWidget] = {}
+        self._assets_heading: QLabel | None = None
+        self._assets_separator: QFrame | None = None
+        self._assets_widget: QWidget | None = None
+        self._pixmap_cache: dict[str, QPixmap] = {}
+        self._composited_hero_cache: dict[tuple[str, str, str], QPixmap] = {}
         self._asset_image_specs: dict[str, tuple[int, int]] = {
             "header_path": (460, 215),
             "hero_path": (384, 124),
-            "logo_path": (300, 120),
             "icon_path": (32, 32),
         }
         self._search_text = ""
@@ -448,7 +497,7 @@ class MainWindow(QMainWindow):
         details_content_widget = QWidget()
         details_content_layout = QHBoxLayout(details_content_widget)
         details_content_layout.setContentsMargins(0, 0, 0, 0)
-        details_content_layout.setSpacing(14)
+        details_content_layout.setSpacing(24)
         details_outer_layout.addWidget(details_content_widget)
         details_outer_layout.addSpacing(12)
 
@@ -526,30 +575,35 @@ class MainWindow(QMainWindow):
             self._detail_labels[key] = value_label
 
         assets_heading = QLabel("Assets")
-        assets_heading.setStyleSheet("font-size: 14px; font-weight: 700;")
+        assets_heading.setStyleSheet("font-size: 16px; font-weight: 700;")
+        self._assets_heading = assets_heading
         details_outer_layout.addWidget(assets_heading)
 
         assets_separator = QFrame()
         assets_separator.setFrameShape(QFrame.Shape.HLine)
         assets_separator.setFrameShadow(QFrame.Shadow.Sunken)
+        self._assets_separator = assets_separator
         details_outer_layout.addWidget(assets_separator)
 
         assets_widget = QWidget()
+        self._assets_widget = assets_widget
         assets_layout = QVBoxLayout(assets_widget)
         assets_layout.setContentsMargins(0, 0, 0, 0)
-        assets_layout.setSpacing(12)
+        assets_layout.setSpacing(18)
         details_outer_layout.addWidget(assets_widget)
 
-        asset_fields = (
-            ("header_path", "Header", (460, 215), None, None, 16),
-            ("hero_path", "Hero", (384, 124), 96, 31, 16),
-            ("logo_path", "Logo", (300, 120), None, None, 0),
-        )
-        for key, title, size, ratio_width, ratio_height, corner_radius in asset_fields:
+        def create_asset_box(
+            key: str,
+            title: str,
+            size: tuple[int, int],
+            ratio_width: int | None,
+            ratio_height: int | None,
+            corner_radius: float,
+        ) -> QWidget:
             asset_box = QWidget()
             asset_box_layout = QVBoxLayout(asset_box)
             asset_box_layout.setContentsMargins(0, 0, 0, 0)
-            asset_box_layout.setSpacing(6)
+            asset_box_layout.setSpacing(10)
 
             asset_label = QLabel(title)
             asset_label.setStyleSheet("font-weight: 600;")
@@ -572,10 +626,24 @@ class MainWindow(QMainWindow):
                 preview_label.setMinimumSize(preview_width, preview_height)
                 preview_label.setMaximumSize(preview_width, preview_height)
             self._asset_image_labels[key] = preview_label
+            self._asset_boxes[key] = asset_box
             self._asset_image_specs[key] = size
             asset_box_layout.addWidget(preview_label)
+            return asset_box
 
-            assets_layout.addWidget(asset_box)
+        header_box = create_asset_box("header_path", "Header", (460, 215), 460, 215, 16)
+        header_box.setMinimumWidth(360)
+        header_box.setMaximumWidth(460)
+        header_box.setSizePolicy(
+            QSizePolicy.Policy.Preferred,
+            QSizePolicy.Policy.Maximum,
+        )
+
+        assets_layout.addWidget(header_box, 0, Qt.AlignmentFlag.AlignTop)
+
+        assets_layout.addWidget(
+            create_asset_box("hero_path", "Hero", (384, 124), 96, 31, 16)
+        )
 
         assets_layout.addStretch(1)
 
@@ -585,8 +653,8 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(root)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(14)
-        layout.addWidget(list_widget, 3)
-        layout.addWidget(details_widget, 2)
+        layout.addWidget(list_widget, 5)
+        layout.addWidget(details_widget, 4)
         layout.setAlignment(details_widget, Qt.AlignmentFlag.AlignTop)
         self.setCentralWidget(root)
 
@@ -605,7 +673,7 @@ class MainWindow(QMainWindow):
 
         try:
             rows: list[tuple[int, str]] = []
-            details_by_appid: dict[int, dict[str, str]] = {}
+            details_by_appid: dict[int, dict[str, Any]] = {}
 
             with AppInfoFile.open(path_obj) as appinfo:
                 for app in appinfo.iter_apps():
@@ -634,6 +702,7 @@ class MainWindow(QMainWindow):
                         "capsule_path": asset_paths["capsule_path"],
                         "hero_path": asset_paths["hero_path"],
                         "logo_path": asset_paths["logo_path"],
+                        "logo_position": _library_logo_position(app.data),
                         "icon_path": asset_paths["icon_path"],
                     }
         except Exception as exc:
@@ -657,12 +726,28 @@ class MainWindow(QMainWindow):
         self._table.sortItems(0, Qt.SortOrder.AscendingOrder)
         self._apply_table_filter(self._search_input.text())
 
-    def _set_details(self, details: dict[str, str] | None) -> None:
+    def _set_details(self, details: dict[str, Any] | None) -> None:
         self._set_capsule_preview((details or {}).get("capsule_path", "-"))
         for key, label in self._detail_labels.items():
             label.setText((details or {}).get(key, "-"))
 
+        any_assets_visible = False
+        for key in ("header_path", "hero_path"):
+            asset_box = self._asset_boxes.get(key)
+            path = str((details or {}).get(key, "-"))
+            is_visible = path not in {"", "-"}
+            if asset_box is not None:
+                asset_box.setVisible(is_visible)
+            any_assets_visible = any_assets_visible or is_visible
+
+        for widget in (self._assets_heading, self._assets_separator, self._assets_widget):
+            if widget is not None:
+                widget.setVisible(any_assets_visible)
+
         for key, label in self._asset_image_labels.items():
+            if key == "hero_path":
+                self._set_hero_preview(label, details or {})
+                continue
             self._set_asset_preview(label, (details or {}).get(key, "-"), key)
 
     def _set_capsule_preview(self, path: str) -> None:
@@ -670,7 +755,7 @@ class MainWindow(QMainWindow):
             self._capsule_preview.set_source_pixmap(None)
             return
 
-        pixmap = QPixmap(path)
+        pixmap = self._cached_pixmap(path)
         if pixmap.isNull():
             self._capsule_preview.set_source_pixmap(None)
             return
@@ -683,7 +768,7 @@ class MainWindow(QMainWindow):
                 label.set_source_pixmap(None)
                 return
 
-            pixmap = QPixmap(path)
+            pixmap = self._cached_pixmap(path)
             label.set_source_pixmap(pixmap if not pixmap.isNull() else None)
             return
 
@@ -693,7 +778,7 @@ class MainWindow(QMainWindow):
             label.setText("")
             return
 
-        pixmap = QPixmap(path)
+        pixmap = self._cached_pixmap(path)
         if pixmap.isNull():
             preview_width, preview_height = self._asset_image_specs[key]
             label.setPixmap(self._missing_asset_pixmap(preview_width, preview_height))
@@ -710,6 +795,137 @@ class MainWindow(QMainWindow):
                 Qt.TransformationMode.SmoothTransformation,
             )
         )
+
+    def _set_hero_preview(self, label: QLabel, details: dict[str, Any]) -> None:
+        if not isinstance(label, PreviewPixmapLabel):
+            self._set_asset_preview(
+                label, str(details.get("hero_path", "-")), "hero_path"
+            )
+            return
+
+        hero_path = str(details.get("hero_path", "-"))
+        if hero_path in {"", "-"}:
+            label.set_source_pixmap(None)
+            return
+
+        hero_pixmap = self._cached_pixmap(hero_path)
+        if hero_pixmap.isNull():
+            label.set_source_pixmap(None)
+            return
+
+        logo_path = str(details.get("logo_path", "-"))
+        logo_position = details.get("logo_position")
+        if logo_path in {"", "-"} or not isinstance(logo_position, dict):
+            label.set_source_pixmap(hero_pixmap)
+            return
+
+        logo_pixmap = self._cached_pixmap(logo_path)
+        if logo_pixmap.isNull():
+            label.set_source_pixmap(hero_pixmap)
+            return
+
+        cache_key = (hero_path, logo_path, repr(sorted(logo_position.items())))
+        cached_composed = self._composited_hero_cache.get(cache_key)
+        if cached_composed is not None:
+            label.set_source_pixmap(cached_composed)
+            return
+
+        composed = self._compose_hero_with_logo(
+            hero_pixmap,
+            logo_pixmap,
+            logo_position,
+        )
+        final_pixmap = composed or hero_pixmap
+        self._composited_hero_cache[cache_key] = final_pixmap
+        label.set_source_pixmap(final_pixmap)
+
+    def _cached_pixmap(self, path: str) -> QPixmap:
+        cached = self._pixmap_cache.get(path)
+        if cached is not None:
+            return cached
+
+        pixmap = QPixmap(path)
+        self._pixmap_cache[path] = pixmap
+        return pixmap
+
+    def _compose_hero_with_logo(
+        self,
+        hero_pixmap: QPixmap,
+        logo_pixmap: QPixmap,
+        logo_position: dict[str, Any],
+    ) -> QPixmap | None:
+        side_padding = 32
+        top_padding = 16
+        bottom_padding = 128
+        width_pct = _float_value(logo_position.get("width_pct"))
+        height_pct = _float_value(logo_position.get("height_pct"))
+        if width_pct is None or height_pct is None:
+            return None
+
+        available_width = max(1, hero_pixmap.width() - (side_padding * 2))
+        available_height = max(1, hero_pixmap.height() - top_padding - bottom_padding)
+        target_box_width = max(
+            1,
+            round(available_width * max(0.0, min(width_pct, 100.0)) / 100.0),
+        )
+        target_box_height = max(
+            1,
+            round(available_height * max(0.0, min(height_pct, 100.0)) / 100.0),
+        )
+        width_scale = target_box_width / max(1, logo_pixmap.width())
+        height_scale = target_box_height / max(1, logo_pixmap.height())
+        scale = min(width_scale, height_scale, 1.0)
+        scaled_logo = logo_pixmap.scaled(
+            max(1, round(logo_pixmap.width() * scale)),
+            max(1, round(logo_pixmap.height() * scale)),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        if scaled_logo.isNull():
+            return None
+
+        pinned_position = str(logo_position.get("pinned_position") or "BottomLeft")
+        horizontal_anchor = "left"
+        vertical_anchor = "top"
+        if pinned_position.endswith("Right"):
+            horizontal_anchor = "right"
+        elif pinned_position.endswith("Center"):
+            horizontal_anchor = "center"
+
+        if pinned_position.startswith("Bottom"):
+            vertical_anchor = "bottom"
+        elif pinned_position.startswith("Center") or pinned_position.startswith(
+            "Middle"
+        ):
+            vertical_anchor = "center"
+
+        scaled_canvas_width = scaled_logo.width()
+        scaled_canvas_height = scaled_logo.height()
+        x = 0.0
+        y = 0.0
+        if horizontal_anchor == "right":
+            x = hero_pixmap.width() - scaled_canvas_width - side_padding
+        elif horizontal_anchor == "left":
+            x = side_padding
+        elif horizontal_anchor == "center":
+            x = (hero_pixmap.width() - scaled_canvas_width) / 2.0
+
+        if vertical_anchor == "bottom":
+            y = hero_pixmap.height() - scaled_canvas_height - bottom_padding
+        elif vertical_anchor == "top":
+            y = top_padding
+        elif vertical_anchor == "center":
+            y = (hero_pixmap.height() - scaled_canvas_height) / 2.0
+
+        x = max(0, min(round(x), hero_pixmap.width() - scaled_canvas_width))
+        y = max(0, min(round(y), hero_pixmap.height() - scaled_canvas_height))
+
+        composed = QPixmap(hero_pixmap)
+        painter = QPainter(composed)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.drawPixmap(x, y, scaled_logo)
+        painter.end()
+        return composed
 
     def _missing_asset_pixmap(self, width: int, height: int) -> QPixmap:
         icon_size = min(width, height, 32)
