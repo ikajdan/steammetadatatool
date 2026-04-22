@@ -166,16 +166,16 @@ def _sort_as_value(data: dict[str, Any]) -> Any:
 
 def _format_aliases(value: Any) -> str:
     if value is None:
-        return "-"
+        return "–"
     if isinstance(value, list):
-        return ", ".join(str(v) for v in value) if value else "-"
+        return ", ".join(str(v) for v in value) if value else "–"
     raw = str(value).strip()
-    return raw or "-"
+    return raw or "–"
 
 
 def _format_release_date(value: Any) -> str:
     if value is None:
-        return "-"
+        return "–"
 
     unix_value: int | None = None
     if isinstance(value, int):
@@ -185,10 +185,10 @@ def _format_release_date(value: Any) -> str:
 
     if unix_value is None:
         text = str(value).strip()
-        return text or "-"
+        return text or "–"
 
     if unix_value <= 0:
-        return "-"
+        return "–"
 
     try:
         return datetime.fromtimestamp(unix_value, tz=timezone.utc).strftime("%Y-%m-%d")
@@ -511,11 +511,11 @@ class MainWindow(QMainWindow):
 
                     details_by_appid[app.appid] = {
                         "appid": str(app.appid),
-                        "name": name or "-",
-                        "sort_as": str(_sort_as_value(app.data) or "-"),
+                        "name": name or "–",
+                        "sort_as": str(_sort_as_value(app.data) or "–"),
                         "aliases": _format_aliases(_aliases_value(app.data)),
-                        "developer": str(_extended_value(app.data, "developer") or "-"),
-                        "publisher": str(_extended_value(app.data, "publisher") or "-"),
+                        "developer": str(_extended_value(app.data, "developer") or "–"),
+                        "publisher": str(_extended_value(app.data, "publisher") or "–"),
                         "original_release_date": _format_release_date(
                             _common_value(app.data, "original_release_date")
                         ),
