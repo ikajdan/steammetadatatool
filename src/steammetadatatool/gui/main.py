@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QIcon, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFormLayout,
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QSizePolicy,
@@ -316,11 +317,25 @@ class MainWindow(QMainWindow):
             "logo_path": (300, 120),
             "icon_path": (32, 32),
         }
+        self._search_text = ""
         self._capsule_preview = RatioPreviewPixmapLabel(
             self._missing_asset_pixmap(32, 32),
             2,
             3,
         )
+
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText("Search by Name or App ID")
+        search_icon = QIcon.fromTheme(
+            "edit-find",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView),
+        )
+        self._search_input.addAction(
+            search_icon,
+            QLineEdit.ActionPosition.LeadingPosition,
+        )
+        self._search_input.setClearButtonEnabled(True)
+        self._search_input.textChanged.connect(self._apply_table_filter)
 
         self._table = QTableWidget(0, 2)
         self._table.setHorizontalHeaderLabels(["App ID", "Name"])
@@ -335,9 +350,18 @@ class MainWindow(QMainWindow):
         self._table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeMode.ResizeToContents
         )
-        self._table.setItemDelegateForColumn(1, LeftPaddingItemDelegate(10, self._table))
+        self._table.setItemDelegateForColumn(
+            1, LeftPaddingItemDelegate(10, self._table)
+        )
         self._table.setSortingEnabled(True)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
+
+        list_widget = QWidget()
+        list_layout = QVBoxLayout(list_widget)
+        list_layout.setContentsMargins(0, 0, 0, 0)
+        list_layout.setSpacing(8)
+        list_layout.addWidget(self._search_input)
+        list_layout.addWidget(self._table)
 
         details_widget = QWidget()
         details_widget.setMinimumWidth(500)
@@ -360,6 +384,7 @@ class MainWindow(QMainWindow):
         details_content_layout.setContentsMargins(0, 0, 0, 0)
         details_content_layout.setSpacing(14)
         details_outer_layout.addWidget(details_content_widget)
+        details_outer_layout.addSpacing(12)
 
         capsule_container = QWidget()
         capsule_layout = QVBoxLayout(capsule_container)
@@ -493,7 +518,7 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(root)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(14)
-        layout.addWidget(self._table, 3)
+        layout.addWidget(list_widget, 3)
         layout.addWidget(details_widget, 2)
         layout.setAlignment(details_widget, Qt.AlignmentFlag.AlignTop)
         self.setCentralWidget(root)
@@ -563,10 +588,7 @@ class MainWindow(QMainWindow):
             self._table.setItem(row, 1, name_item)
         self._table.setSortingEnabled(True)
         self._table.sortItems(0, Qt.SortOrder.AscendingOrder)
-
-        self._set_details(None)
-        if rows:
-            self._table.selectRow(0)
+        self._apply_table_filter(self._search_input.text())
 
     def _set_details(self, details: dict[str, str] | None) -> None:
         self._set_capsule_preview((details or {}).get("capsule_path", "-"))
@@ -646,6 +668,43 @@ class MainWindow(QMainWindow):
             return
 
         self._set_details(self._details_by_appid.get(appid))
+
+    def _apply_table_filter(self, text: str) -> None:
+        self._search_text = text.strip().casefold()
+
+        first_visible_row: int | None = None
+        current_row = self._table.currentRow()
+        current_row_visible = False
+
+        for row in range(self._table.rowCount()):
+            appid_item = self._table.item(row, 0)
+            name_item = self._table.item(row, 1)
+            if appid_item is None or name_item is None:
+                self._table.setRowHidden(row, True)
+                continue
+
+            appid_text = appid_item.text()
+            name_text = name_item.text()
+            matches = not self._search_text or (
+                self._search_text in appid_text.casefold()
+                or self._search_text in name_text.casefold()
+            )
+            self._table.setRowHidden(row, not matches)
+
+            if matches and first_visible_row is None:
+                first_visible_row = row
+            if matches and row == current_row:
+                current_row_visible = True
+
+        if current_row_visible:
+            return
+
+        self._table.clearSelection()
+        if first_visible_row is None:
+            self._set_details(None)
+            return
+
+        self._table.selectRow(first_visible_row)
 
 
 def main() -> int:
