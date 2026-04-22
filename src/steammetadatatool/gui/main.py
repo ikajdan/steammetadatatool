@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QScrollArea,
     QSizePolicy,
     QStyle,
     QStyledItemDelegate,
@@ -654,8 +655,14 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(14)
         layout.addWidget(list_widget, 5)
-        layout.addWidget(details_widget, 4)
-        layout.setAlignment(details_widget, Qt.AlignmentFlag.AlignTop)
+
+        details_scroll = QScrollArea()
+        details_scroll.setWidgetResizable(True)
+        details_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        details_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        details_scroll.setWidget(details_widget)
+
+        layout.addWidget(details_scroll, 4)
         self.setCentralWidget(root)
 
         if initial_path:
