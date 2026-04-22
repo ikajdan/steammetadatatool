@@ -336,6 +336,7 @@ class MainWindow(QMainWindow):
             0, QHeaderView.ResizeMode.ResizeToContents
         )
         self._table.setItemDelegateForColumn(1, LeftPaddingItemDelegate(10, self._table))
+        self._table.setSortingEnabled(True)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
 
         details_widget = QWidget()
@@ -549,15 +550,19 @@ class MainWindow(QMainWindow):
 
         self._details_by_appid = details_by_appid
 
+        self._table.setSortingEnabled(False)
         self._table.setRowCount(len(rows))
         for row, (appid, name) in enumerate(rows):
-            appid_item = QTableWidgetItem(str(appid))
+            appid_item = QTableWidgetItem()
+            appid_item.setData(Qt.ItemDataRole.DisplayRole, appid)
             appid_item.setTextAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
             )
             name_item = QTableWidgetItem(name)
             self._table.setItem(row, 0, appid_item)
             self._table.setItem(row, 1, name_item)
+        self._table.setSortingEnabled(True)
+        self._table.sortItems(0, Qt.SortOrder.AscendingOrder)
 
         self._set_details(None)
         if rows:
