@@ -146,18 +146,36 @@ class AppInfoFile:
                         return
 
 
-def find_steam_appinfo_path() -> Path | None:
+def steam_base_paths() -> list[Path]:
+    home = Path.home()
+
     if sys.platform.startswith("linux"):
-        home = Path.home()
-        candidates = [
+        return [
             home / ".local/share/Steam",
             home / ".var/app/com.valvesoftware.Steam/data/Steam",
+            home / ".var/app/com.valvesoftware.Steam/.local/share/Steam",
         ]
-        for base in candidates:
-            p = base / "appcache" / "appinfo.vdf"
-            if p.exists():
-                return p
-        return None
+
+    if sys.platform == "darwin":
+        return [home / "Library/Application Support/Steam"]
+
+    if sys.platform.startswith("win"):
+        candidates: list[Path] = []
+        env = os.environ.get("PROGRAMFILES(X86)") or os.environ.get("PROGRAMFILES")
+        if env:
+            candidates.append(Path(env) / "Steam")
+        candidates.append(home / "AppData/Local/Steam")
+        return candidates
+
+    return []
+
+
+def find_steam_appinfo_path() -> Path | None:
+    for base in steam_base_paths():
+        p = base / "appcache" / "appinfo.vdf"
+        if p.exists():
+            return p
+    return None
 
     if sys.platform == "darwin":
         p = Path.home() / "Library/Application Support/Steam/appcache/appinfo.vdf"

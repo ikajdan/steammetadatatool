@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFormLayout,
@@ -15,14 +16,114 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QSizePolicy,
+    QStyle,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from steammetadatatool.core.appinfo import AppInfoFile, find_steam_appinfo_path
+from steammetadatatool.core.appinfo import (
+    AppInfoFile,
+    find_steam_appinfo_path,
+    steam_base_paths,
+)
 from steammetadatatool.core.keyvalues1 import kv_deep_get
+
+
+def _steam_librarycache_roots() -> list[Path]:
+    return [base / "appcache" / "librarycache" for base in steam_base_paths()]
+
+
+def _librarycache_dir_for_app(appid: int) -> Path | None:
+    for root in _steam_librarycache_roots():
+        app_cache_dir = root / str(appid)
+        if app_cache_dir.is_dir():
+            return app_cache_dir
+    return None
+
+
+def _find_asset_file(base_dir: Path, *filenames: str) -> str:
+    """Find an asset file in base_dir or its subdirectories.
+
+    Checks each filename in order, first at the root, then in subdirectories.
+    Returns the path to the first file found, or "-" if none found.
+    """
+    for filename in filenames:
+        root_path = base_dir / filename
+        if root_path.is_file():
+            return str(root_path)
+
+        try:
+            for subdir in base_dir.iterdir():
+                if subdir.is_dir():
+                    candidate = subdir / filename
+                    if candidate.is_file():
+                        return str(candidate)
+        except (OSError, PermissionError):
+            pass
+
+    return "-"
+
+
+def _cached_icon_path(appid: int) -> str:
+    app_cache_dir = _librarycache_dir_for_app(appid)
+    if app_cache_dir is None:
+        return "-"
+
+    candidates = sorted(
+        p
+        for p in app_cache_dir.iterdir()
+        if p.is_file()
+        and p.suffix.lower() == ".jpg"
+        and len(p.stem) == 40
+        and all(ch in "0123456789abcdef" for ch in p.stem)
+    )
+    if candidates:
+        return str(candidates[0])
+
+    try:
+        for subdir in app_cache_dir.iterdir():
+            if subdir.is_dir():
+                candidates = sorted(
+                    p
+                    for p in subdir.iterdir()
+                    if p.is_file()
+                    and p.suffix.lower() == ".jpg"
+                    and len(p.stem) == 40
+                    and all(ch in "0123456789abcdef" for ch in p.stem)
+                )
+                if candidates:
+                    return str(candidates[0])
+    except (OSError, PermissionError):
+        pass
+
+    return "-"
+
+
+def _asset_paths_for_app(appid: int) -> dict[str, str]:
+    app_cache_dir = _librarycache_dir_for_app(appid)
+    if app_cache_dir is None:
+        return {
+            "header_path": "-",
+            "capsule_path": "-",
+            "hero_path": "-",
+            "logo_path": "-",
+            "icon_path": "-",
+        }
+
+    return {
+        "header_path": _find_asset_file(
+            app_cache_dir, "header.jpg", "library_header.jpg"
+        ),
+        "capsule_path": _find_asset_file(
+            app_cache_dir, "library_600x900.jpg", "library_capsule.jpg"
+        ),
+        "hero_path": _find_asset_file(app_cache_dir, "library_hero.jpg"),
+        "logo_path": _find_asset_file(app_cache_dir, "logo.png"),
+        "icon_path": _cached_icon_path(appid),
+    }
 
 
 def _common_value(data: dict[str, Any], key: str) -> Any:
@@ -95,6 +196,99 @@ def _format_release_date(value: Any) -> str:
         return str(unix_value)
 
 
+class PreviewPixmapLabel(QLabel):
+    def __init__(
+        self,
+        placeholder: QPixmap,
+        parent: QWidget | None = None,
+        *,
+        show_placeholder_frame: bool = True,
+    ) -> None:
+        super().__init__(parent)
+        self._source_pixmap: QPixmap | None = None
+        self._placeholder_pixmap = placeholder
+        self._show_placeholder_frame = show_placeholder_frame
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setFrameShape(
+            QFrame.Shape.StyledPanel
+            if self._show_placeholder_frame
+            else QFrame.Shape.NoFrame
+        )
+        self.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+
+    def set_source_pixmap(self, pixmap: QPixmap | None) -> None:
+        self._source_pixmap = pixmap if pixmap and not pixmap.isNull() else None
+        self._refresh_pixmap()
+
+    def set_placeholder_pixmap(self, pixmap: QPixmap) -> None:
+        self._placeholder_pixmap = pixmap
+        self._refresh_pixmap()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._refresh_pixmap()
+
+    def _refresh_pixmap(self) -> None:
+        pixmap = self._source_pixmap or self._placeholder_pixmap
+        if pixmap.isNull():
+            self.setPixmap(QPixmap())
+            return
+
+        if self._source_pixmap is None:
+            self.setFrameShape(
+                QFrame.Shape.StyledPanel
+                if self._show_placeholder_frame
+                else QFrame.Shape.NoFrame
+            )
+            icon_size = min(self.width(), self.height(), 32)
+            self.setPixmap(
+                pixmap.scaled(
+                    icon_size,
+                    icon_size,
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation,
+                )
+            )
+            return
+
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setPixmap(
+            pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+
+
+class RatioPreviewPixmapLabel(PreviewPixmapLabel):
+    def __init__(
+        self,
+        placeholder: QPixmap,
+        ratio_width: int,
+        ratio_height: int,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(placeholder, parent)
+        self._ratio_width = ratio_width
+        self._ratio_height = ratio_height
+
+    def resizeEvent(self, event) -> None:
+        target_height = max(
+            1, int(self.width() * self._ratio_height / self._ratio_width)
+        )
+        if (
+            self.minimumHeight() != target_height
+            or self.maximumHeight() != target_height
+        ):
+            self.setMinimumHeight(target_height)
+            self.setMaximumHeight(target_height)
+        super().resizeEvent(event)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, initial_path: str | None = None) -> None:
         super().__init__()
@@ -104,6 +298,18 @@ class MainWindow(QMainWindow):
 
         self._details_by_appid: dict[int, dict[str, str]] = {}
         self._detail_labels: dict[str, QLabel] = {}
+        self._asset_image_labels: dict[str, QLabel] = {}
+        self._asset_image_specs: dict[str, tuple[int, int]] = {
+            "header_path": (460, 215),
+            "hero_path": (384, 124),
+            "logo_path": (300, 120),
+            "icon_path": (32, 32),
+        }
+        self._capsule_preview = RatioPreviewPixmapLabel(
+            self._missing_asset_pixmap(32, 32),
+            2,
+            3,
+        )
 
         self._table = QTableWidget(0, 2)
         self._table.setHorizontalHeaderLabels(["App ID", "Name"])
@@ -136,8 +342,22 @@ class MainWindow(QMainWindow):
         heading_separator.setFrameShadow(QFrame.Shadow.Sunken)
         details_outer_layout.addWidget(heading_separator)
 
+        details_content_widget = QWidget()
+        details_content_layout = QHBoxLayout(details_content_widget)
+        details_content_layout.setContentsMargins(0, 0, 0, 0)
+        details_content_layout.setSpacing(14)
+        details_outer_layout.addWidget(details_content_widget)
+
+        capsule_container = QWidget()
+        capsule_layout = QVBoxLayout(capsule_container)
+        capsule_layout.setContentsMargins(0, 0, 0, 0)
+        capsule_layout.addWidget(self._capsule_preview)
+        capsule_layout.setStretch(0, 1)
+        self._capsule_preview.setMinimumWidth(220)
+        details_content_layout.addWidget(capsule_container, 1)
+
         details_form_container = QWidget()
-        details_outer_layout.addWidget(details_form_container)
+        details_content_layout.addWidget(details_form_container, 2)
 
         details_layout = QFormLayout(details_form_container)
         details_layout.setContentsMargins(0, 0, 0, 0)
@@ -156,6 +376,8 @@ class MainWindow(QMainWindow):
         fields = (
             ("appid", "App ID"),
             ("name", "Name"),
+            ("_separator_name_icon", ""),
+            ("icon_path", "Icon"),
             ("_separator_1", ""),
             ("sort_as", "Sort As"),
             ("aliases", "Aliases"),
@@ -178,17 +400,79 @@ class MainWindow(QMainWindow):
             title_label.setMinimumWidth(175)
             title_label.setStyleSheet("font-weight: 600;")
 
-            value_label = QLabel("-")
-            value_label.setMinimumWidth(280)
-            value_label.setAlignment(
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
-            )
-            value_label.setWordWrap(True)
-            value_label.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse
-            )
+            if key in self._asset_image_specs:
+                preview_width, preview_height = self._asset_image_specs[key]
+                value_label = PreviewPixmapLabel(
+                    self._missing_asset_pixmap(preview_width, preview_height),
+                    show_placeholder_frame=key != "icon_path",
+                )
+                value_label.setMinimumSize(preview_width, preview_height)
+                value_label.setMaximumSize(preview_width, preview_height)
+                self._asset_image_labels[key] = value_label
+            else:
+                value_label = QLabel("-")
+                value_label.setMinimumWidth(280)
+                value_label.setAlignment(
+                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+                )
+                value_label.setWordWrap(True)
+                value_label.setTextInteractionFlags(
+                    Qt.TextInteractionFlag.TextSelectableByMouse
+                )
             details_layout.addRow(title_label, value_label)
             self._detail_labels[key] = value_label
+
+        assets_heading = QLabel("Assets")
+        assets_heading.setStyleSheet("font-size: 14px; font-weight: 700;")
+        details_outer_layout.addWidget(assets_heading)
+
+        assets_separator = QFrame()
+        assets_separator.setFrameShape(QFrame.Shape.HLine)
+        assets_separator.setFrameShadow(QFrame.Shadow.Sunken)
+        details_outer_layout.addWidget(assets_separator)
+
+        assets_widget = QWidget()
+        assets_layout = QVBoxLayout(assets_widget)
+        assets_layout.setContentsMargins(0, 0, 0, 0)
+        assets_layout.setSpacing(12)
+        details_outer_layout.addWidget(assets_widget)
+
+        asset_fields = (
+            ("header_path", "Header", (460, 215), None, None),
+            ("hero_path", "Hero", (384, 124), 96, 31),
+            ("logo_path", "Logo", (300, 120), None, None),
+        )
+        for key, title, size, ratio_width, ratio_height in asset_fields:
+            asset_box = QWidget()
+            asset_box_layout = QVBoxLayout(asset_box)
+            asset_box_layout.setContentsMargins(0, 0, 0, 0)
+            asset_box_layout.setSpacing(6)
+
+            asset_label = QLabel(title)
+            asset_label.setStyleSheet("font-weight: 600;")
+            asset_box_layout.addWidget(asset_label)
+
+            preview_width, preview_height = size
+            if ratio_width is not None and ratio_height is not None:
+                preview_label = RatioPreviewPixmapLabel(
+                    self._missing_asset_pixmap(preview_width, preview_height),
+                    ratio_width,
+                    ratio_height,
+                )
+                preview_label.setMinimumWidth(0)
+            else:
+                preview_label = PreviewPixmapLabel(
+                    self._missing_asset_pixmap(preview_width, preview_height)
+                )
+                preview_label.setMinimumSize(preview_width, preview_height)
+                preview_label.setMaximumSize(preview_width, preview_height)
+            self._asset_image_labels[key] = preview_label
+            self._asset_image_specs[key] = size
+            asset_box_layout.addWidget(preview_label)
+
+            assets_layout.addWidget(asset_box)
+
+        assets_layout.addStretch(1)
 
         details_outer_layout.addStretch(1)
 
@@ -223,6 +507,8 @@ class MainWindow(QMainWindow):
                     name = app.name or ""
                     rows.append((app.appid, name))
 
+                    asset_paths = _asset_paths_for_app(app.appid)
+
                     details_by_appid[app.appid] = {
                         "appid": str(app.appid),
                         "name": name or "-",
@@ -236,6 +522,11 @@ class MainWindow(QMainWindow):
                         "steam_release_date": _format_release_date(
                             _common_value(app.data, "steam_release_date")
                         ),
+                        "header_path": asset_paths["header_path"],
+                        "capsule_path": asset_paths["capsule_path"],
+                        "hero_path": asset_paths["hero_path"],
+                        "logo_path": asset_paths["logo_path"],
+                        "icon_path": asset_paths["icon_path"],
                     }
         except Exception as exc:
             QMessageBox.critical(self, "SteamMetadataTool", str(exc))
@@ -258,8 +549,63 @@ class MainWindow(QMainWindow):
             self._table.selectRow(0)
 
     def _set_details(self, details: dict[str, str] | None) -> None:
+        self._set_capsule_preview((details or {}).get("capsule_path", "-"))
         for key, label in self._detail_labels.items():
             label.setText((details or {}).get(key, "-"))
+
+        for key, label in self._asset_image_labels.items():
+            self._set_asset_preview(label, (details or {}).get(key, "-"), key)
+
+    def _set_capsule_preview(self, path: str) -> None:
+        if path in {"", "-"}:
+            self._capsule_preview.set_source_pixmap(None)
+            return
+
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            self._capsule_preview.set_source_pixmap(None)
+            return
+
+        self._capsule_preview.set_source_pixmap(pixmap)
+
+    def _set_asset_preview(self, label: QLabel, path: str, key: str) -> None:
+        if isinstance(label, PreviewPixmapLabel):
+            if path in {"", "-"}:
+                label.set_source_pixmap(None)
+                return
+
+            pixmap = QPixmap(path)
+            label.set_source_pixmap(pixmap if not pixmap.isNull() else None)
+            return
+
+        if path in {"", "-"}:
+            preview_width, preview_height = self._asset_image_specs[key]
+            label.setPixmap(self._missing_asset_pixmap(preview_width, preview_height))
+            label.setText("")
+            return
+
+        pixmap = QPixmap(path)
+        if pixmap.isNull():
+            preview_width, preview_height = self._asset_image_specs[key]
+            label.setPixmap(self._missing_asset_pixmap(preview_width, preview_height))
+            label.setText("")
+            return
+
+        preview_width, preview_height = self._asset_image_specs[key]
+        label.setText("")
+        label.setPixmap(
+            pixmap.scaled(
+                preview_width,
+                preview_height,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+
+    def _missing_asset_pixmap(self, width: int, height: int) -> QPixmap:
+        icon_size = min(width, height, 32)
+        icon = self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxQuestion)
+        return icon.pixmap(icon_size, icon_size)
 
     def _on_selection_changed(self) -> None:
         selected = self._table.selectedItems()
