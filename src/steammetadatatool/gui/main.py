@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QSizePolicy,
     QStyle,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -289,6 +290,16 @@ class RatioPreviewPixmapLabel(PreviewPixmapLabel):
         super().resizeEvent(event)
 
 
+class LeftPaddingItemDelegate(QStyledItemDelegate):
+    def __init__(self, left_padding: int, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._left_padding = left_padding
+
+    def initStyleOption(self, option, index) -> None:
+        super().initStyleOption(option, index)
+        option.rect.adjust(self._left_padding, 0, 0, 0)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, initial_path: str | None = None) -> None:
         super().__init__()
@@ -324,6 +335,7 @@ class MainWindow(QMainWindow):
         self._table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeMode.ResizeToContents
         )
+        self._table.setItemDelegateForColumn(1, LeftPaddingItemDelegate(10, self._table))
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
 
         details_widget = QWidget()
