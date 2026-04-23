@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QHeaderView,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QSizePolicy,
@@ -101,11 +102,26 @@ class EditMetadataDialog(QDialog):
         entries = _flatten_metadata_entries(raw_metadata)
         self._appid = appid
         self._original_entries = dict(entries)
+        self._search_text = ""
         action_icon_color = self.palette().placeholderText().color()
 
         dialog_layout = QVBoxLayout(self)
         dialog_layout.setContentsMargins(16, 16, 16, 16)
         dialog_layout.setSpacing(12)
+
+        self._search_input = QLineEdit(self)
+        self._search_input.setPlaceholderText("Search by Key or Value")
+        search_icon = QIcon.fromTheme(
+            "edit-find",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView),
+        )
+        self._search_input.addAction(
+            QIcon(_monochrome_icon_pixmap(search_icon, 16, action_icon_color)),
+            QLineEdit.ActionPosition.LeadingPosition,
+        )
+        self._search_input.setClearButtonEnabled(True)
+        self._search_input.textChanged.connect(self._apply_table_filter)
+        dialog_layout.addWidget(self._search_input)
 
         metadata_table = QTableWidget(len(entries), 2, self)
         self._metadata_table = metadata_table
@@ -162,6 +178,7 @@ class EditMetadataDialog(QDialog):
         metadata_table.cellDoubleClicked.connect(start_value_edit)
         metadata_table.cellActivated.connect(start_value_edit)
         dialog_layout.addWidget(metadata_table)
+        self._apply_table_filter("")
 
         dialog_actions = QWidget(self)
         dialog_actions_layout = QHBoxLayout(dialog_actions)
@@ -284,3 +301,21 @@ class EditMetadataDialog(QDialog):
             return
 
         self.accept()
+
+    def _apply_table_filter(self, text: str) -> None:
+        self._search_text = text.strip().casefold()
+
+        for row in range(self._metadata_table.rowCount()):
+            key_item = self._metadata_table.item(row, 0)
+            value_item = self._metadata_table.item(row, 1)
+            if key_item is None or value_item is None:
+                self._metadata_table.setRowHidden(row, True)
+                continue
+
+            key_text = key_item.text()
+            value_text = value_item.text()
+            matches = not self._search_text or (
+                self._search_text in key_text.casefold()
+                or self._search_text in value_text.casefold()
+            )
+            self._metadata_table.setRowHidden(row, not matches)
