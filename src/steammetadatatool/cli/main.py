@@ -64,13 +64,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--changes-file",
         dest="changes_file",
         type=Path,
-        help="Apply per-app overrides from a JSON file (see data/example-changes.json)",
+        help="Apply per-app overrides from a JSON changes file",
     )
     parser.add_argument(
         "--write-changes-file",
         dest="write_changes_file",
         type=Path,
-        help="Also write effective changes to this JSON file (append by appid, overwrite existing entries)",
+        help="Write changes to a JSON file",
     )
     parser.add_argument(
         "--write-out",

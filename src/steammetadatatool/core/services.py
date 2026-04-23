@@ -89,12 +89,7 @@ def load_changes_file(path: Path) -> ChangeMap:
     except json.JSONDecodeError as exc:
         raise ValueError(f"invalid JSON in --changes-file: {exc}")
 
-    if not isinstance(payload, dict):
-        raise ValueError("--changes-file must contain a JSON object")
-
-    apps = payload.get("apps")
-    if not isinstance(apps, list):
-        raise ValueError("--changes-file must contain an 'apps' array")
+    apps = _normalize_changes_apps_payload(payload)
 
     out: ChangeMap = {}
     for i, app_raw in enumerate(apps):
@@ -102,11 +97,12 @@ def load_changes_file(path: Path) -> ChangeMap:
         if not isinstance(app_raw, dict):
             raise ValueError(f"{where} must be an object")
 
-        appid = app_raw.get("appid")
-        if not isinstance(appid, int) or isinstance(appid, bool) or appid <= 0:
-            raise ValueError(f"{where}.appid must be a positive integer")
+        appid = _parse_changes_appid(app_raw.get("appid"), where=where)
 
-        values = _build_override_values(app_raw, where=where)
+        if "changes" in app_raw:
+            values = _build_override_values_from_change_entries(app_raw, where=where)
+        else:
+            values = _build_override_values(app_raw, where=where)
 
         if appid in out:
             out[appid].update(values)
@@ -116,41 +112,61 @@ def load_changes_file(path: Path) -> ChangeMap:
     return out
 
 
-def write_changes_file(path: Path, changes: ChangeMap) -> None:
-    merged: ChangeMap = {}
-    payload: dict[str, Any] = {}
-
+def write_changes_file(
+    path: Path, changes: ChangeMap, *, source_path: Path | None = None
+) -> None:
+    existing_entries: list[dict[str, Any]] = []
     if path.exists():
         try:
             raw_text = path.read_text(encoding="utf-8")
-            payload = json.loads(raw_text)
+            existing_payload = json.loads(raw_text)
         except OSError as exc:
             raise ValueError(f"could not read --write-changes-file: {exc}")
         except json.JSONDecodeError as exc:
             raise ValueError(f"invalid JSON in --write-changes-file target: {exc}")
+        existing_entries = _normalize_changes_apps_payload(existing_payload)
 
-        if not isinstance(payload, dict):
-            raise ValueError("--write-changes-file target must contain a JSON object")
+    generated_entries = _changes_map_to_apps(changes, source_path=source_path)
+    for generated_entry in generated_entries:
+        generated_appid = str(generated_entry["appid"])
+        merged = False
+        for existing_entry in existing_entries:
+            if str(existing_entry.get("appid")) != generated_appid:
+                continue
 
-        merged = load_changes_file(path)
+            existing_changes = existing_entry.get("changes")
+            if not isinstance(existing_changes, list):
+                existing_changes = []
+                existing_entry["changes"] = existing_changes
 
-    for appid, values in changes.items():
-        if appid in merged:
-            merged[appid].update(values)
-        else:
-            merged[appid] = dict(values)
+            existing_changes_by_key = {
+                str(item.get("key")): item
+                for item in existing_changes
+                if isinstance(item, dict) and item.get("key") is not None
+            }
+            for generated_change in generated_entry.get("changes", []):
+                if not isinstance(generated_change, dict):
+                    continue
+                key = str(generated_change.get("key"))
+                existing_change = existing_changes_by_key.get(key)
+                if existing_change is None:
+                    existing_changes.append(generated_change)
+                    continue
 
-    output = {
-        "format": payload.get("format", "appinfo-changes"),
-        "version": payload.get("version", 1),
-        "created_at": payload.get("created_at")
-        or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "apps": _changes_map_to_apps(merged),
-    }
+                if not existing_change.get("old_value"):
+                    existing_change["old_value"] = generated_change.get("old_value", "")
+                existing_change["new_value"] = generated_change.get("new_value", "")
+
+            merged = True
+            break
+
+        if not merged:
+            existing_entries.append(generated_entry)
 
     try:
         path.write_text(
-            json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            json.dumps(existing_entries, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
         )
     except OSError as exc:
         raise ValueError(f"could not write --write-changes-file: {exc}")
@@ -317,15 +333,231 @@ def _build_override_values(raw: dict[str, Any], *, where: str) -> dict[str, Any]
     return values
 
 
-def _changes_map_to_apps(changes: ChangeMap) -> list[dict[str, Any]]:
+def _changes_map_to_apps(
+    changes: ChangeMap, *, source_path: Path | None = None
+) -> list[dict[str, Any]]:
+    app_context: dict[int, dict[str, Any]] = {}
+    if source_path is not None:
+        with AppInfoFile.open(source_path) as appinfo:
+            for app in appinfo.iter_apps(appids=changes.keys()):
+                app_context[app.appid] = {
+                    "flat": dict(_flatten_metadata_entries_for_changes(app.data)),
+                }
+
     apps: list[dict[str, Any]] = []
     for appid in sorted(changes.keys()):
-        entry = {"appid": appid}
-        for key in CHANGE_FIELDS:
-            if key in changes[appid]:
-                entry[key] = changes[appid][key]
+        entry: dict[str, Any] = {
+            "appid": str(appid),
+            "changes": [],
+        }
+        context = app_context.get(appid, {})
+        for change in _change_entries_from_values(
+            changes[appid],
+            old_values=context.get("flat", {}),
+        ):
+            entry["changes"].append(change)
         apps.append(entry)
     return apps
+
+
+def _normalize_changes_apps_payload(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    if isinstance(payload, dict):
+        apps = payload.get("apps")
+        if isinstance(apps, list):
+            return [item for item in apps if isinstance(item, dict)]
+        return [payload]
+    raise ValueError("--changes-file must contain a JSON object or array")
+
+
+def _parse_changes_appid(appid_raw: Any, *, where: str) -> int:
+    if isinstance(appid_raw, int) and not isinstance(appid_raw, bool) and appid_raw > 0:
+        return appid_raw
+    if isinstance(appid_raw, str) and appid_raw.isdigit():
+        appid = int(appid_raw)
+        if appid > 0:
+            return appid
+    raise ValueError(f"{where}.appid must be a positive integer")
+
+
+def _parse_scalar(value: Any) -> Any:
+    if not isinstance(value, str):
+        return value
+
+    lowered = value.casefold()
+    if lowered == "null":
+        return None
+    if lowered == "true":
+        return True
+    if lowered == "false":
+        return False
+    if value.isdigit():
+        return int(value)
+    return value
+
+
+def _key_to_internal_change(key: str, new_value: Any) -> tuple[str, Any]:
+    generic_change = (
+        "set_values",
+        ([part for part in key.split(".") if part], _parse_scalar(new_value)),
+    )
+
+    if key in {"appinfo.common.name", "common.name"}:
+        return "name", str(new_value)
+    if key in {"appinfo.common.sortas", "common.sortas"}:
+        return "sort_as", str(new_value)
+    if key in {"appinfo.extended.developer", "extended.developer"}:
+        return "developer", str(new_value)
+    if key in {"appinfo.extended.publisher", "extended.publisher"}:
+        return "publisher", str(new_value)
+    if key in {
+        "appinfo.common.original_release_date",
+        "common.original_release_date",
+    }:
+        if (
+            isinstance(new_value, str)
+            and len(new_value) == 10
+            and new_value[4] == "-"
+            and new_value[7] == "-"
+        ):
+            return "original_release_date", new_value
+        return generic_change
+    if key in {
+        "appinfo.common.steam_release_date",
+        "common.steam_release_date",
+    }:
+        if (
+            isinstance(new_value, str)
+            and len(new_value) == 10
+            and new_value[4] == "-"
+            and new_value[7] == "-"
+        ):
+            return "steam_release_date", new_value
+        return generic_change
+    if key in {"appinfo.common.aliases", "common.aliases"}:
+        return "aliases", parse_aliases(str(new_value))
+    return generic_change
+
+
+def _build_override_values_from_change_entries(
+    raw: dict[str, Any], *, where: str
+) -> dict[str, Any]:
+    allowed_keys = {"appid", "changes"}
+    unknown_keys = [k for k in raw.keys() if k not in allowed_keys]
+    if unknown_keys:
+        raise ValueError(
+            f"{where}: unknown field(s): {', '.join(sorted(unknown_keys))}"
+        )
+
+    changes = raw.get("changes")
+    if not isinstance(changes, list):
+        raise ValueError(f"{where}.changes must be an array")
+
+    values: dict[str, Any] = {}
+    set_values: list[SetValue] = []
+    for index, change in enumerate(changes):
+        change_where = f"{where}.changes[{index}]"
+        if not isinstance(change, dict):
+            raise ValueError(f"{change_where} must be an object")
+
+        key = change.get("key")
+        if not isinstance(key, str) or not key.strip():
+            raise ValueError(f"{change_where}.key must be a non-empty string")
+        if "new_value" not in change:
+            raise ValueError(f"{change_where}.new_value is required")
+
+        internal_key, internal_value = _key_to_internal_change(
+            key.strip(), change["new_value"]
+        )
+        if internal_key == "set_values":
+            set_values.append(internal_value)
+        else:
+            values[internal_key] = internal_value
+
+    if set_values:
+        values["set_values"] = set_values
+    return values
+
+
+def _format_change_file_value(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, list):
+        return ", ".join(str(item) for item in value)
+    return str(value)
+
+
+def _flatten_metadata_entries_for_changes(
+    value: Any,
+    prefix: str = "",
+) -> list[tuple[str, str]]:
+    if isinstance(value, dict):
+        if not value:
+            return [(prefix or "(root)", "{}")]
+
+        entries: list[tuple[str, str]] = []
+        for key, nested_value in value.items():
+            next_prefix = f"{prefix}.{key}" if prefix else str(key)
+            entries.extend(
+                _flatten_metadata_entries_for_changes(nested_value, next_prefix)
+            )
+        return entries
+
+    if isinstance(value, list):
+        if not value:
+            return [(prefix or "(root)", "[]")]
+
+        entries: list[tuple[str, str]] = []
+        for index, nested_value in enumerate(value):
+            next_prefix = f"{prefix}[{index}]" if prefix else f"[{index}]"
+            entries.extend(
+                _flatten_metadata_entries_for_changes(nested_value, next_prefix)
+            )
+        return entries
+
+    return [(prefix or "(root)", _format_change_file_value(value))]
+
+
+def _change_entries_from_values(
+    values: dict[str, Any], *, old_values: dict[str, str]
+) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+
+    def add_entry(key: str, new_value: Any) -> None:
+        entries.append(
+            {
+                "key": key,
+                "old_value": old_values.get(key, ""),
+                "new_value": _format_change_file_value(new_value),
+            }
+        )
+
+    if "name" in values:
+        add_entry("appinfo.common.name", values["name"])
+    if "sort_as" in values:
+        add_entry("appinfo.common.sortas", values["sort_as"])
+    if "aliases" in values:
+        add_entry("appinfo.common.aliases", values["aliases"])
+    if "developer" in values:
+        add_entry("appinfo.extended.developer", values["developer"])
+    if "publisher" in values:
+        add_entry("appinfo.extended.publisher", values["publisher"])
+    if "original_release_date" in values:
+        add_entry(
+            "appinfo.common.original_release_date", values["original_release_date"]
+        )
+    if "steam_release_date" in values:
+        add_entry("appinfo.common.steam_release_date", values["steam_release_date"])
+
+    set_values = values.get("set_values")
+    if set_values:
+        for path, value in set_values:
+            add_entry(".".join(path), value)
+
+    return entries
 
 
 def _deep_set(obj: dict[str, Any], path: list[str], value: Any) -> None:

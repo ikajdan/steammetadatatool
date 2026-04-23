@@ -54,7 +54,11 @@ def execute_cli_request(request: CliRequest) -> CliExecutionResult:
                 overrides=request.overrides,
                 file_changes=file_changes,
             )
-            write_changes_file(request.write_changes_file, effective_changes)
+            write_changes_file(
+                request.write_changes_file,
+                effective_changes,
+                source_path=Path(path),
+            )
 
         return CliExecutionResult(lines=[], written_path=written_path)
 

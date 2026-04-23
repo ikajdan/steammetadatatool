@@ -70,22 +70,28 @@ uv run steammetadatatool-cli \
   --dry-run
 ```
 
-Apply changes from JSON:
-
-```bash
-uv run steammetadatatool-cli \
-  --changes-file data/example-changes.json \
-  --appid 730 \
-  --json
-```
-
-Write changes file:
+Write changes to a JSON file:
 
 ```bash
 uv run steammetadatatool-cli \
   --appid 730 \
   --name "Counter-Strike 2 (Modded)" \
-  --write-changes-file data/my-changes.json
+  --write-changes-file user-changes.json
+```
+
+Apply changes from a JSON file for a specific app:
+
+```bash
+uv run steammetadatatool-cli \
+  --changes-file user-changes.json \
+  --appid 730
+```
+
+Apply changes from a JSON file for all apps:
+
+```bash
+uv run steammetadatatool-cli \
+  --changes-file user-changes.json
 ```
 
 Set arbitrary KV path:
@@ -94,8 +100,7 @@ Set arbitrary KV path:
 uv run steammetadatatool-cli \
   --appid 10 \
   --set appinfo.common.sortas=CS \
-  --set appinfo.common.original_release_date=946684800 \
-  --json
+  --set appinfo.common.original_release_date=946684800
 ```
 
 ### Write to a new file
