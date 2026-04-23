@@ -98,6 +98,7 @@ class EditMetadataDialog(QDialog):
         self.setWindowTitle("Edit Metadata")
         self.setModal(True)
         self.resize(1080, 560)
+        self._column_width_ratio = (4, 3)
 
         entries = _flatten_metadata_entries(raw_metadata)
         readonly_keys = {
@@ -131,6 +132,10 @@ class EditMetadataDialog(QDialog):
 
         metadata_table = QTableWidget(len(entries), 2, self)
         self._metadata_table = metadata_table
+        metadata_table.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
         metadata_table.setHorizontalHeaderLabels(["Key", "Value"])
         metadata_table.verticalHeader().setVisible(False)
         metadata_table.setEditTriggers(
@@ -155,12 +160,11 @@ class EditMetadataDialog(QDialog):
             """
         )
         metadata_table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.ResizeToContents
+            0, QHeaderView.ResizeMode.Fixed
         )
         metadata_table.horizontalHeader().setSectionResizeMode(
-            1, QHeaderView.ResizeMode.Stretch
+            1, QHeaderView.ResizeMode.Fixed
         )
-        metadata_table.setColumnWidth(1, 540)
 
         for row, (key, value) in enumerate(entries):
             key_item = QTableWidgetItem(key)
@@ -243,6 +247,14 @@ class EditMetadataDialog(QDialog):
         dialog_actions_layout.setStretch(1, 1)
         dialog_actions_layout.setStretch(2, 1)
         dialog_layout.addWidget(dialog_actions)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._apply_column_ratio()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._apply_column_ratio()
 
     def _save_changes(self) -> None:
         changes: list[dict[str, str]] = []
@@ -334,3 +346,14 @@ class EditMetadataDialog(QDialog):
                 or self._search_text in value_text.casefold()
             )
             self._metadata_table.setRowHidden(row, not matches)
+
+    def _apply_column_ratio(self) -> None:
+        viewport_width = self._metadata_table.viewport().width()
+        if viewport_width <= 0:
+            return
+
+        total_ratio = self._column_width_ratio[0] + self._column_width_ratio[1]
+        key_width = int(viewport_width * self._column_width_ratio[0] / total_ratio)
+        value_width = max(0, viewport_width - key_width)
+        self._metadata_table.setColumnWidth(0, key_width)
+        self._metadata_table.setColumnWidth(1, value_width)
