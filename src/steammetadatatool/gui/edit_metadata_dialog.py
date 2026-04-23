@@ -190,6 +190,8 @@ class EditMetadataDialog(QDialog):
 
         metadata_table.cellDoubleClicked.connect(start_value_edit)
         metadata_table.cellActivated.connect(start_value_edit)
+        metadata_table.setSortingEnabled(True)
+        metadata_table.sortItems(0, Qt.SortOrder.AscendingOrder)
         dialog_layout.addWidget(metadata_table)
         self._apply_table_filter("")
 
