@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -475,6 +475,7 @@ class MainWindow(QMainWindow):
             3,
             corner_radius=16,
         )
+        self._details_form_container: QWidget | None = None
 
         self._search_input = QLineEdit()
         self._search_input.setPlaceholderText("Search by Name or App ID")
@@ -567,15 +568,27 @@ class MainWindow(QMainWindow):
         details_outer_layout.addSpacing(12)
 
         capsule_container = QWidget()
+        capsule_container.setSizePolicy(
+            QSizePolicy.Policy.Maximum,
+            QSizePolicy.Policy.Preferred,
+        )
         capsule_layout = QVBoxLayout(capsule_container)
         capsule_layout.setContentsMargins(0, 0, 0, 0)
-        capsule_layout.addWidget(self._capsule_preview)
+        capsule_layout.addWidget(
+            self._capsule_preview, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
         capsule_layout.setStretch(0, 1)
         self._capsule_preview.setMinimumWidth(220)
-        details_content_layout.addWidget(capsule_container, 1)
+        details_content_layout.addWidget(
+            capsule_container, 0, Qt.AlignmentFlag.AlignTop
+        )
 
         details_form_container = QWidget()
-        details_content_layout.addWidget(details_form_container, 2)
+        self._details_form_container = details_form_container
+        details_form_container.installEventFilter(self)
+        details_content_layout.addWidget(
+            details_form_container, 2, Qt.AlignmentFlag.AlignTop
+        )
 
         details_layout = QFormLayout(details_form_container)
         details_layout.setContentsMargins(0, 0, 0, 0)
@@ -724,6 +737,9 @@ class MainWindow(QMainWindow):
         details_scroll.setWidgetResizable(True)
         details_scroll.setFrameShape(QFrame.Shape.NoFrame)
         details_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        details_scroll.setAlignment(
+            Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+        )
         details_scroll.setWidget(details_widget)
 
         layout.addWidget(details_scroll, 4)
@@ -824,6 +840,8 @@ class MainWindow(QMainWindow):
                 continue
             self._set_asset_preview(label, (details or {}).get(key, "-"), key)
 
+        self._sync_capsule_preview_size()
+
     def _set_capsule_preview(self, path: str) -> None:
         if path in {"", "-"}:
             self._capsule_preview.set_source_pixmap(None)
@@ -835,6 +853,31 @@ class MainWindow(QMainWindow):
             return
 
         self._capsule_preview.set_source_pixmap(pixmap)
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if watched is self._details_form_container and event.type() in {
+            QEvent.Type.Resize,
+            QEvent.Type.Show,
+            QEvent.Type.LayoutRequest,
+        }:
+            self._sync_capsule_preview_size()
+        return super().eventFilter(watched, event)
+
+    def _sync_capsule_preview_size(self) -> None:
+        if self._details_form_container is None:
+            return
+
+        target_height = self._details_form_container.height()
+        if target_height <= 0:
+            target_height = self._details_form_container.sizeHint().height()
+        if target_height <= 0:
+            return
+
+        target_width = max(1, int(target_height * 2 / 3))
+        self._capsule_preview.setFixedWidth(target_width)
+        capsule_container = self._capsule_preview.parentWidget()
+        if capsule_container is not None:
+            capsule_container.setFixedWidth(target_width)
 
     def _set_asset_preview(self, label: QLabel, path: str, key: str) -> None:
         if isinstance(label, PreviewPixmapLabel):
