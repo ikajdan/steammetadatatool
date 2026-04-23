@@ -186,22 +186,12 @@ class EditMetadataDialog(QDialog):
             | QTableWidget.EditTrigger.EditKeyPressed
             | QTableWidget.EditTrigger.AnyKeyPressed
         )
-        metadata_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        metadata_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        metadata_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         metadata_table.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         metadata_table.setAlternatingRowColors(True)
         metadata_table.setShowGrid(False)
         metadata_table.setWordWrap(True)
-        metadata_table.setStyleSheet(
-            """
-            QTableWidget::item:selected {
-                background: transparent;
-                color: palette(text);
-            }
-            QTableWidget::item:focus {
-                outline: none;
-            }
-            """
-        )
         metadata_table.horizontalHeader().setSectionResizeMode(
             0, QHeaderView.ResizeMode.Fixed
         )
@@ -212,12 +202,7 @@ class EditMetadataDialog(QDialog):
         for row, (key, value) in enumerate(entries):
             key_item = QTableWidgetItem(key)
             value_item = QTableWidgetItem(value)
-            key_item.setFlags(
-                key_item.flags()
-                & ~Qt.ItemFlag.ItemIsEditable
-                & ~Qt.ItemFlag.ItemIsSelectable
-            )
-            value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            key_item.setFlags(key_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
             if key in readonly_keys:
                 value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 value_item.setForeground(readonly_text_color)
@@ -300,6 +285,7 @@ class EditMetadataDialog(QDialog):
         super().showEvent(event)
         self._apply_column_ratio()
         self._apply_header_layout()
+        self._focus_first_row()
 
     def _save_changes(self) -> None:
         changes: list[dict[str, str]] = []
@@ -392,6 +378,8 @@ class EditMetadataDialog(QDialog):
             )
             self._metadata_table.setRowHidden(row, not matches)
 
+        self._focus_first_row()
+
     def _apply_column_ratio(self) -> None:
         viewport_width = self._metadata_table.viewport().width()
         if viewport_width <= 0:
@@ -409,7 +397,9 @@ class EditMetadataDialog(QDialog):
             return
 
         content_width = max(0, header_width)
-        search_width = int(content_width * self._header_width_ratio[1] / sum(self._header_width_ratio))
+        search_width = int(
+            content_width * self._header_width_ratio[1] / sum(self._header_width_ratio)
+        )
         name_width = max(0, int(self.width() / 2) - 16)
         self._header_row_layout.setContentsMargins(0, 0, 0, 0)
         self._search_input.setFixedWidth(search_width)
@@ -418,3 +408,18 @@ class EditMetadataDialog(QDialog):
             QSizePolicy.Policy.Fixed,
         )
         self._app_name_label.setFixedWidth(name_width)
+
+    def _focus_first_row(self) -> None:
+        for row in range(self._metadata_table.rowCount()):
+            if self._metadata_table.isRowHidden(row):
+                continue
+
+            item = self._metadata_table.item(row, 1) or self._metadata_table.item(
+                row, 0
+            )
+            if item is None:
+                continue
+
+            self._metadata_table.setCurrentItem(item)
+            self._metadata_table.setFocus(Qt.FocusReason.OtherFocusReason)
+            return

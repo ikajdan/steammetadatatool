@@ -1233,6 +1233,12 @@ class MainWindow(QMainWindow):
             return
 
         self._table.selectRow(first_visible_row)
+        focus_item = self._table.item(first_visible_row, 1) or self._table.item(
+            first_visible_row, 0
+        )
+        if focus_item is not None:
+            self._table.setCurrentItem(focus_item)
+        self._table.setFocus(Qt.FocusReason.OtherFocusReason)
 
 
 def main() -> int:
