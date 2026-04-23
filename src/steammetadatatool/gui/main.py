@@ -614,8 +614,8 @@ class MainWindow(QMainWindow):
         )
 
         fields = (
-            ("appid", "App ID"),
             ("name", "Name"),
+            ("appid", "App ID"),
             ("_separator_name_icon", ""),
             ("icon_path", "Icon"),
             ("_separator_1", ""),
