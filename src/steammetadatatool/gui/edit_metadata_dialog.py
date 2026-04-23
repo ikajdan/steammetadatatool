@@ -100,10 +100,16 @@ class EditMetadataDialog(QDialog):
         self.resize(1080, 560)
 
         entries = _flatten_metadata_entries(raw_metadata)
+        readonly_keys = {
+            "appinfo.appid",
+            "appinfo.common.gameid",
+        }
         self._appid = appid
         self._original_entries = dict(entries)
         self._search_text = ""
         action_icon_color = self.palette().placeholderText().color()
+        readonly_text_color = self.palette().placeholderText().color()
+        readonly_background_color = self.palette().alternateBase().color()
 
         dialog_layout = QVBoxLayout(self)
         dialog_layout.setContentsMargins(16, 16, 16, 16)
@@ -165,11 +171,18 @@ class EditMetadataDialog(QDialog):
                 & ~Qt.ItemFlag.ItemIsSelectable
             )
             value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            if key in readonly_keys:
+                value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                value_item.setForeground(readonly_text_color)
+                value_item.setBackground(readonly_background_color)
             metadata_table.setItem(row, 0, key_item)
             metadata_table.setItem(row, 1, value_item)
 
         def start_value_edit(row: int, column: int) -> None:
             if column != 1:
+                return
+            key_item = metadata_table.item(row, 0)
+            if key_item is not None and key_item.text() in readonly_keys:
                 return
             item = metadata_table.item(row, column)
             if item is not None:
