@@ -124,6 +124,7 @@ class EditMetadataDialog(QDialog):
         self.setWindowTitle("Edit Metadata")
         self.setModal(True)
         self.resize(1080, 560)
+        self.setMinimumSize(720, 520)
         self._column_width_ratio = (4, 3)
         self._header_width_ratio = (2, 1)
 
