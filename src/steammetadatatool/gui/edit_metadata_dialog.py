@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QHeaderView,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -86,12 +87,37 @@ def _normalize_changes_payload(data: Any) -> list[dict[str, Any]]:
     return []
 
 
+class ElidedLabel(QLabel):
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._full_text = text
+        self._update_elided_text()
+
+    def set_full_text(self, text: str) -> None:
+        self._full_text = text
+        self._update_elided_text()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._update_elided_text()
+
+    def _update_elided_text(self) -> None:
+        self.setText(
+            self.fontMetrics().elidedText(
+                self._full_text,
+                Qt.TextElideMode.ElideRight,
+                max(0, self.width()),
+            )
+        )
+
+
 class EditMetadataDialog(QDialog):
     def __init__(
         self,
         raw_metadata: dict[str, Any],
         *,
         appid: str | None = None,
+        app_name: str | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -99,6 +125,7 @@ class EditMetadataDialog(QDialog):
         self.setModal(True)
         self.resize(1080, 560)
         self._column_width_ratio = (4, 3)
+        self._header_width_ratio = (2, 1)
 
         entries = _flatten_metadata_entries(raw_metadata)
         readonly_keys = {
@@ -116,7 +143,22 @@ class EditMetadataDialog(QDialog):
         dialog_layout.setContentsMargins(16, 16, 16, 16)
         dialog_layout.setSpacing(12)
 
-        self._search_input = QLineEdit(self)
+        header_row = QWidget(self)
+        header_row_layout = QHBoxLayout(header_row)
+        self._header_row_layout = header_row_layout
+        header_row_layout.setContentsMargins(0, 0, 0, 0)
+        header_row_layout.setSpacing(12)
+
+        self._app_name_label = ElidedLabel(app_name or "", header_row)
+        self._app_name_label.setStyleSheet("font-size: 18px; font-weight: 700;")
+        self._app_name_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        header_row_layout.addWidget(self._app_name_label)
+        header_row_layout.addStretch(1)
+
+        self._search_input = QLineEdit(header_row)
         self._search_input.setPlaceholderText("Search by Key or Value")
         search_icon = QIcon.fromTheme(
             "edit-find",
@@ -128,7 +170,8 @@ class EditMetadataDialog(QDialog):
         )
         self._search_input.setClearButtonEnabled(True)
         self._search_input.textChanged.connect(self._apply_table_filter)
-        dialog_layout.addWidget(self._search_input)
+        header_row_layout.addWidget(self._search_input, 0, Qt.AlignmentFlag.AlignRight)
+        dialog_layout.addWidget(header_row)
 
         metadata_table = QTableWidget(len(entries), 2, self)
         self._metadata_table = metadata_table
@@ -251,10 +294,12 @@ class EditMetadataDialog(QDialog):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._apply_column_ratio()
+        self._apply_header_layout()
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._apply_column_ratio()
+        self._apply_header_layout()
 
     def _save_changes(self) -> None:
         changes: list[dict[str, str]] = []
@@ -357,3 +402,19 @@ class EditMetadataDialog(QDialog):
         value_width = max(0, viewport_width - key_width)
         self._metadata_table.setColumnWidth(0, key_width)
         self._metadata_table.setColumnWidth(1, value_width)
+
+    def _apply_header_layout(self) -> None:
+        header_width = self._header_row_layout.parentWidget().width()
+        if header_width <= 0:
+            return
+
+        content_width = max(0, header_width)
+        search_width = int(content_width * self._header_width_ratio[1] / sum(self._header_width_ratio))
+        name_width = max(0, int(self.width() / 2) - 16)
+        self._header_row_layout.setContentsMargins(0, 0, 0, 0)
+        self._search_input.setFixedWidth(search_width)
+        self._search_input.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        self._app_name_label.setFixedWidth(name_width)

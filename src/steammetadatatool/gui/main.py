@@ -832,6 +832,7 @@ class MainWindow(QMainWindow):
         dialog = EditMetadataDialog(
             raw_metadata,
             appid=details.get("appid") if details is not None else None,
+            app_name=details.get("name") if details is not None else None,
             parent=self,
         )
         dialog.exec()
