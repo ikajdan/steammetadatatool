@@ -532,6 +532,9 @@ class MainWindow(QMainWindow):
         )
         self._table.setSortingEnabled(True)
         self._table.itemSelectionChanged.connect(self._on_selection_changed)
+        self._table.itemDoubleClicked.connect(
+            lambda _item: self._open_edit_metadata_dialog()
+        )
 
         list_widget = QWidget()
         list_layout = QVBoxLayout(list_widget)
