@@ -1,0 +1,286 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from PySide6.QtCore import QSize, Qt
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtWidgets import (
+    QDialog,
+    QHBoxLayout,
+    QHeaderView,
+    QMessageBox,
+    QPushButton,
+    QSizePolicy,
+    QStyle,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+
+def _monochrome_icon_pixmap(
+    icon: QIcon, size: int, color: QColor, right_padding: int = 0
+) -> QPixmap:
+    pixmap = icon.pixmap(size, size)
+    if pixmap.isNull():
+        return pixmap
+
+    monochrome = QPixmap(pixmap.width() + right_padding, pixmap.height())
+    monochrome.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(monochrome)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+    painter.drawPixmap(0, 0, pixmap)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
+    painter.fillRect(monochrome.rect(), color)
+    painter.end()
+    return monochrome
+
+
+def _format_metadata_value(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        return value
+    return str(value)
+
+
+def _flatten_metadata_entries(
+    value: Any,
+    prefix: str = "",
+) -> list[tuple[str, str]]:
+    if isinstance(value, dict):
+        if not value:
+            return [(prefix or "(root)", "{}")]
+
+        entries: list[tuple[str, str]] = []
+        for key, nested_value in value.items():
+            next_prefix = f"{prefix}.{key}" if prefix else str(key)
+            entries.extend(_flatten_metadata_entries(nested_value, next_prefix))
+        return entries
+
+    if isinstance(value, list):
+        if not value:
+            return [(prefix or "(root)", "[]")]
+
+        entries: list[tuple[str, str]] = []
+        for index, nested_value in enumerate(value):
+            next_prefix = f"{prefix}[{index}]" if prefix else f"[{index}]"
+            entries.extend(_flatten_metadata_entries(nested_value, next_prefix))
+        return entries
+
+    return [(prefix or "(root)", _format_metadata_value(value))]
+
+
+def _normalize_changes_payload(data: Any) -> list[dict[str, Any]]:
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    if isinstance(data, dict):
+        return [data]
+    return []
+
+
+class EditMetadataDialog(QDialog):
+    def __init__(
+        self,
+        raw_metadata: dict[str, Any],
+        *,
+        appid: str | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Edit Metadata")
+        self.setModal(True)
+        self.resize(1080, 560)
+
+        entries = _flatten_metadata_entries(raw_metadata)
+        self._appid = appid
+        self._original_entries = dict(entries)
+        action_icon_color = self.palette().placeholderText().color()
+
+        dialog_layout = QVBoxLayout(self)
+        dialog_layout.setContentsMargins(16, 16, 16, 16)
+        dialog_layout.setSpacing(12)
+
+        metadata_table = QTableWidget(len(entries), 2, self)
+        self._metadata_table = metadata_table
+        metadata_table.setHorizontalHeaderLabels(["Key", "Value"])
+        metadata_table.verticalHeader().setVisible(False)
+        metadata_table.setEditTriggers(
+            QTableWidget.EditTrigger.DoubleClicked
+            | QTableWidget.EditTrigger.EditKeyPressed
+            | QTableWidget.EditTrigger.AnyKeyPressed
+        )
+        metadata_table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        metadata_table.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        metadata_table.setAlternatingRowColors(True)
+        metadata_table.setShowGrid(False)
+        metadata_table.setWordWrap(True)
+        metadata_table.setStyleSheet(
+            """
+            QTableWidget::item:selected {
+                background: transparent;
+                color: palette(text);
+            }
+            QTableWidget::item:focus {
+                outline: none;
+            }
+            """
+        )
+        metadata_table.horizontalHeader().setSectionResizeMode(
+            0, QHeaderView.ResizeMode.ResizeToContents
+        )
+        metadata_table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        metadata_table.setColumnWidth(1, 540)
+
+        for row, (key, value) in enumerate(entries):
+            key_item = QTableWidgetItem(key)
+            value_item = QTableWidgetItem(value)
+            key_item.setFlags(
+                key_item.flags()
+                & ~Qt.ItemFlag.ItemIsEditable
+                & ~Qt.ItemFlag.ItemIsSelectable
+            )
+            value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            metadata_table.setItem(row, 0, key_item)
+            metadata_table.setItem(row, 1, value_item)
+
+        def start_value_edit(row: int, column: int) -> None:
+            if column != 1:
+                return
+            item = metadata_table.item(row, column)
+            if item is not None:
+                metadata_table.editItem(item)
+
+        metadata_table.cellDoubleClicked.connect(start_value_edit)
+        metadata_table.cellActivated.connect(start_value_edit)
+        dialog_layout.addWidget(metadata_table)
+
+        dialog_actions = QWidget(self)
+        dialog_actions_layout = QHBoxLayout(dialog_actions)
+        dialog_actions_layout.setContentsMargins(0, 0, 0, 0)
+        dialog_actions_layout.setSpacing(12)
+        dialog_actions_layout.addStretch(1)
+
+        save_icon = QIcon.fromTheme(
+            "document-save",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton),
+        )
+        save_button = QPushButton(
+            QIcon(_monochrome_icon_pixmap(save_icon, 24, action_icon_color)),
+            "Save",
+            dialog_actions,
+        )
+        save_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        save_button.setMinimumHeight(40)
+        save_button.setMaximumWidth(360)
+        save_button.setIconSize(QSize(24, 24))
+        save_button.clicked.connect(self._save_changes)
+        dialog_actions_layout.addWidget(save_button)
+
+        cancel_icon = QIcon.fromTheme(
+            "dialog-cancel",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton),
+        )
+        cancel_button = QPushButton(
+            QIcon(_monochrome_icon_pixmap(cancel_icon, 24, action_icon_color)),
+            "Cancel",
+            dialog_actions,
+        )
+        cancel_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        cancel_button.setMinimumHeight(40)
+        cancel_button.setMaximumWidth(360)
+        cancel_button.setIconSize(QSize(24, 24))
+        cancel_button.clicked.connect(self.reject)
+        dialog_actions_layout.addWidget(cancel_button)
+
+        dialog_actions_layout.setStretch(0, 4)
+        dialog_actions_layout.setStretch(1, 1)
+        dialog_actions_layout.setStretch(2, 1)
+        dialog_layout.addWidget(dialog_actions)
+
+    def _save_changes(self) -> None:
+        changes: list[dict[str, str]] = []
+        for row in range(self._metadata_table.rowCount()):
+            key_item = self._metadata_table.item(row, 0)
+            value_item = self._metadata_table.item(row, 1)
+            if key_item is None or value_item is None:
+                continue
+
+            key = key_item.text()
+            old_value = self._original_entries.get(key, "")
+            new_value = value_item.text()
+            if new_value != old_value:
+                changes.append(
+                    {
+                        "key": key,
+                        "old_value": old_value,
+                        "new_value": new_value,
+                    }
+                )
+
+        payload = {
+            "appid": self._appid,
+            "changes": changes,
+        }
+
+        try:
+            changes_path = Path.cwd() / "user-changes.json"
+            existing_payload: list[dict[str, Any]] = []
+            if changes_path.exists():
+                existing_data = json.loads(changes_path.read_text(encoding="utf-8"))
+                existing_payload = _normalize_changes_payload(existing_data)
+
+            merged = False
+            for app_entry in existing_payload:
+                if str(app_entry.get("appid")) != str(self._appid):
+                    continue
+
+                existing_changes = app_entry.get("changes")
+                if not isinstance(existing_changes, list):
+                    existing_changes = []
+                    app_entry["changes"] = existing_changes
+
+                existing_changes_by_key = {
+                    str(item.get("key")): item
+                    for item in existing_changes
+                    if isinstance(item, dict) and item.get("key") is not None
+                }
+                for change in changes:
+                    existing_change = existing_changes_by_key.get(change["key"])
+                    if existing_change is None:
+                        existing_changes.append(change)
+                        continue
+
+                    if not existing_change.get("old_value"):
+                        existing_change["old_value"] = change["old_value"]
+                    existing_change["new_value"] = change["new_value"]
+
+                merged = True
+                break
+
+            if not merged:
+                existing_payload.append(payload)
+
+            changes_path.write_text(
+                json.dumps(existing_payload, indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+        except (OSError, json.JSONDecodeError) as exc:
+            QMessageBox.critical(self, "Edit Metadata", str(exc))
+            return
+
+        self.accept()

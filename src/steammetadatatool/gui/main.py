@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QScrollArea,
     QSizePolicy,
     QStyle,
@@ -34,6 +35,7 @@ from steammetadatatool.core.appinfo import (
     steam_base_paths,
 )
 from steammetadatatool.core.keyvalues1 import kv_deep_get
+from steammetadatatool.gui.edit_metadata_dialog import EditMetadataDialog
 
 
 def _steam_librarycache_roots() -> list[Path]:
@@ -174,12 +176,14 @@ def _float_value(value: Any) -> float | None:
     return None
 
 
-def _monochrome_icon_pixmap(icon: QIcon, size: int, color: QColor) -> QPixmap:
+def _monochrome_icon_pixmap(
+    icon: QIcon, size: int, color: QColor, right_padding: int = 0
+) -> QPixmap:
     pixmap = icon.pixmap(size, size)
     if pixmap.isNull():
         return pixmap
 
-    monochrome = QPixmap(pixmap.size())
+    monochrome = QPixmap(pixmap.width() + right_padding, pixmap.height())
     monochrome.fill(Qt.GlobalColor.transparent)
 
     painter = QPainter(monochrome)
@@ -575,7 +579,9 @@ class MainWindow(QMainWindow):
         capsule_layout = QVBoxLayout(capsule_container)
         capsule_layout.setContentsMargins(0, 0, 0, 0)
         capsule_layout.addWidget(
-            self._capsule_preview, 0, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+            self._capsule_preview,
+            0,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
         )
         capsule_layout.setStretch(0, 1)
         self._capsule_preview.setMinimumWidth(220)
@@ -736,17 +742,96 @@ class MainWindow(QMainWindow):
         details_scroll = QScrollArea()
         details_scroll.setWidgetResizable(True)
         details_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        details_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        details_scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         details_scroll.setAlignment(
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
         )
         details_scroll.setWidget(details_widget)
 
-        layout.addWidget(details_scroll, 4)
+        details_panel = QWidget()
+        details_panel_layout = QVBoxLayout(details_panel)
+        details_panel_layout.setContentsMargins(0, 0, 0, 0)
+        details_panel_layout.setSpacing(12)
+        details_panel_layout.addWidget(details_scroll, 1)
+
+        actions_container = QWidget()
+        actions_layout = QHBoxLayout(actions_container)
+        actions_layout.setContentsMargins(18, 0, 18, 18)
+        actions_layout.setSpacing(12)
+
+        metadata_icon = QIcon.fromTheme(
+            "document-edit",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon),
+        )
+        metadata_button_icon = QIcon(
+            _monochrome_icon_pixmap(
+                metadata_icon, 24, filter_icon_color, right_padding=0
+            )
+        )
+        edit_metadata_button = QPushButton(metadata_button_icon, "Edit Metadata")
+        edit_metadata_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        edit_metadata_button.setMinimumHeight(40)
+        edit_metadata_button.setMaximumWidth(680)
+        edit_metadata_button.setIconSize(QSize(24, 24))
+        edit_metadata_button.clicked.connect(self._open_edit_metadata_dialog)
+        actions_layout.addWidget(edit_metadata_button)
+
+        assets_icon = QIcon.fromTheme(
+            "view-preview",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon),
+        )
+        assets_button_icon = QIcon(
+            _monochrome_icon_pixmap(assets_icon, 24, filter_icon_color, right_padding=0)
+        )
+        edit_assets_button = QPushButton(assets_button_icon, "Edit Assets")
+        edit_assets_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        edit_assets_button.setMinimumHeight(40)
+        edit_assets_button.setMaximumWidth(680)
+        edit_assets_button.setIconSize(QSize(24, 24))
+        actions_layout.addWidget(edit_assets_button)
+
+        details_panel_layout.addWidget(actions_container, 0)
+
+        layout.addWidget(details_panel, 4)
         self.setCentralWidget(root)
 
         if initial_path:
             self._load_apps(initial_path)
+
+    def _open_edit_metadata_dialog(self) -> None:
+        appid = self._current_selected_appid()
+        if appid is None:
+            QMessageBox.information(
+                self,
+                "Edit Metadata",
+                "Select an app to view its metadata.",
+            )
+            return
+
+        details = self._details_by_appid.get(appid)
+        raw_metadata = details.get("_raw_metadata") if details is not None else None
+        if not isinstance(raw_metadata, dict):
+            QMessageBox.information(
+                self,
+                "Edit Metadata",
+                "No metadata is available for the selected app.",
+            )
+            return
+
+        dialog = EditMetadataDialog(
+            raw_metadata,
+            appid=details.get("appid") if details is not None else None,
+            parent=self,
+        )
+        dialog.exec()
 
     def _load_apps(self, path: str) -> None:
         path_obj = Path(path).expanduser()
@@ -775,6 +860,7 @@ class MainWindow(QMainWindow):
                     asset_paths = _asset_paths_for_app(app.appid)
 
                     details_by_appid[app.appid] = {
+                        "_raw_metadata": app.data,
                         "appid": str(app.appid),
                         "name": name or "–",
                         "sort_as": str(_sort_as_value(app.data) or "–"),
@@ -816,6 +902,21 @@ class MainWindow(QMainWindow):
         self._table.sortItems(0, Qt.SortOrder.AscendingOrder)
         self._apply_table_filter(self._search_input.text())
 
+    def _current_selected_appid(self) -> int | None:
+        selected = self._table.selectedItems()
+        if not selected:
+            return None
+
+        row = selected[0].row()
+        appid_item = self._table.item(row, 0)
+        if appid_item is None:
+            return None
+
+        try:
+            return int(appid_item.text())
+        except ValueError:
+            return None
+
     def _set_details(self, details: dict[str, Any] | None) -> None:
         self._set_capsule_preview((details or {}).get("capsule_path", "-"))
         for key, label in self._detail_labels.items():
@@ -830,7 +931,11 @@ class MainWindow(QMainWindow):
                 asset_box.setVisible(is_visible)
             any_assets_visible = any_assets_visible or is_visible
 
-        for widget in (self._assets_heading, self._assets_separator, self._assets_widget):
+        for widget in (
+            self._assets_heading,
+            self._assets_separator,
+            self._assets_widget,
+        ):
             if widget is not None:
                 widget.setVisible(any_assets_visible)
 
@@ -1071,20 +1176,8 @@ class MainWindow(QMainWindow):
         return pixmap
 
     def _on_selection_changed(self) -> None:
-        selected = self._table.selectedItems()
-        if not selected:
-            self._set_details(None)
-            return
-
-        row = selected[0].row()
-        appid_item = self._table.item(row, 0)
-        if appid_item is None:
-            self._set_details(None)
-            return
-
-        try:
-            appid = int(appid_item.text())
-        except ValueError:
+        appid = self._current_selected_appid()
+        if appid is None:
             self._set_details(None)
             return
 
