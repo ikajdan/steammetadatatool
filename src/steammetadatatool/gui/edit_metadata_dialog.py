@@ -286,7 +286,7 @@ class EditMetadataDialog(QDialog):
         super().showEvent(event)
         self._apply_column_ratio()
         self._apply_header_layout()
-        self._focus_first_row()
+        self._select_first_visible_row()
 
     def _save_changes(self) -> None:
         changes: list[dict[str, str]] = []
@@ -379,7 +379,7 @@ class EditMetadataDialog(QDialog):
             )
             self._metadata_table.setRowHidden(row, not matches)
 
-        self._focus_first_row()
+        self._select_first_visible_row()
 
     def _apply_column_ratio(self) -> None:
         viewport_width = self._metadata_table.viewport().width()
@@ -410,7 +410,7 @@ class EditMetadataDialog(QDialog):
         )
         self._app_name_label.setFixedWidth(name_width)
 
-    def _focus_first_row(self) -> None:
+    def _select_first_visible_row(self) -> None:
         for row in range(self._metadata_table.rowCount()):
             if self._metadata_table.isRowHidden(row):
                 continue
@@ -422,5 +422,4 @@ class EditMetadataDialog(QDialog):
                 continue
 
             self._metadata_table.setCurrentItem(item)
-            self._metadata_table.setFocus(Qt.FocusReason.OtherFocusReason)
             return

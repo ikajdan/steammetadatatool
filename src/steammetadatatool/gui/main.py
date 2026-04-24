@@ -1452,7 +1452,6 @@ class MainWindow(QMainWindow):
         )
         if focus_item is not None:
             self._table.setCurrentItem(focus_item)
-        self._table.setFocus(Qt.FocusReason.OtherFocusReason)
 
 
 def main() -> int:
