@@ -35,6 +35,7 @@ from steammetadatatool.core.appinfo import (
     steam_base_paths,
 )
 from steammetadatatool.core.keyvalues1 import kv_deep_get
+from steammetadatatool.gui.edit_assets_dialog import EditAssetsDialog
 from steammetadatatool.gui.edit_metadata_dialog import EditMetadataDialog
 
 
@@ -799,6 +800,7 @@ class MainWindow(QMainWindow):
         edit_assets_button.setMinimumHeight(40)
         edit_assets_button.setMaximumWidth(680)
         edit_assets_button.setIconSize(QSize(24, 24))
+        edit_assets_button.clicked.connect(self._open_edit_assets_dialog)
         actions_layout.addWidget(edit_assets_button)
 
         details_panel_layout.addWidget(actions_container, 0)
@@ -831,6 +833,39 @@ class MainWindow(QMainWindow):
 
         dialog = EditMetadataDialog(
             raw_metadata,
+            appid=details.get("appid") if details is not None else None,
+            app_name=details.get("name") if details is not None else None,
+            parent=self,
+        )
+        dialog.exec()
+
+    def _open_edit_assets_dialog(self) -> None:
+        appid = self._current_selected_appid()
+        if appid is None:
+            QMessageBox.information(
+                self,
+                "Edit Assets",
+                "Select an app to view its assets.",
+            )
+            return
+
+        details = self._details_by_appid.get(appid)
+        if details is None:
+            QMessageBox.information(
+                self,
+                "Edit Assets",
+                "No asset information is available for the selected app.",
+            )
+            return
+
+        dialog = EditAssetsDialog(
+            {
+                "header_path": str(details.get("header_path", "-")),
+                "capsule_path": str(details.get("capsule_path", "-")),
+                "hero_path": str(details.get("hero_path", "-")),
+                "logo_path": str(details.get("logo_path", "-")),
+                "icon_path": str(details.get("icon_path", "-")),
+            },
             appid=details.get("appid") if details is not None else None,
             app_name=details.get("name") if details is not None else None,
             parent=self,
