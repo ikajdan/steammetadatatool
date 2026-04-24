@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QEvent, QSize, Qt, QVariantAnimation
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPixmap
+from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QVariantAnimation
+from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
     QFormLayout,
@@ -309,12 +309,14 @@ class PreviewPixmapLabel(QLabel):
         *,
         corner_radius: float = 0.0,
         show_placeholder_frame: bool = True,
+        show_inactive_border: bool = False,
     ) -> None:
         super().__init__(parent)
         self._source_pixmap: QPixmap | None = None
         self._placeholder_pixmap = placeholder
         self._corner_radius = corner_radius
         self._show_placeholder_frame = show_placeholder_frame
+        self._show_inactive_border = show_inactive_border
         self._hovered = False
         self._click_handler: Callable[[], None] | None = None
         self._show_click_overlay = False
@@ -412,6 +414,7 @@ class PreviewPixmapLabel(QLabel):
 
     def paintEvent(self, event) -> None:
         super().paintEvent(event)
+        self._paint_inactive_border()
         if (
             self._click_handler is None
             or not self._show_click_overlay
@@ -452,6 +455,36 @@ class PreviewPixmapLabel(QLabel):
             painter.drawPixmap(x, y, icon)
         painter.end()
 
+    def _paint_inactive_border(self) -> None:
+        if not self._show_inactive_border:
+            return
+
+        pixmap = self.pixmap()
+        if pixmap is None or pixmap.isNull():
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(self.palette().mid().color(), 1)
+        pen.setCosmetic(True)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        border_rect = QRectF(
+            0.5,
+            0.5,
+            max(0.0, self.width() - 1.0),
+            max(0.0, self.height() - 1.0),
+        )
+        if self._corner_radius > 0:
+            painter.drawRoundedRect(
+                border_rect,
+                self._corner_radius,
+                self._corner_radius,
+            )
+        else:
+            painter.drawRect(border_rect)
+        painter.end()
+
     def _refresh_pixmap(self) -> None:
         pixmap = self._source_pixmap or self._placeholder_pixmap
         if pixmap.isNull():
@@ -461,7 +494,7 @@ class PreviewPixmapLabel(QLabel):
         if self._source_pixmap is None:
             self.setFrameShape(
                 QFrame.Shape.StyledPanel
-                if self._show_placeholder_frame
+                if self._show_placeholder_frame and self._corner_radius <= 0
                 else QFrame.Shape.NoFrame
             )
             self.setPixmap(self._placeholder_display_pixmap())
@@ -499,6 +532,8 @@ class PreviewPixmapLabel(QLabel):
         y = (target_size.height() - placeholder.height()) // 2
         painter.drawPixmap(x, y, placeholder)
         painter.end()
+        if self._corner_radius > 0:
+            return self._rounded_pixmap(canvas)
         return canvas
 
     def _rounded_pixmap(self, pixmap: QPixmap) -> QPixmap:
@@ -532,12 +567,14 @@ class RatioPreviewPixmapLabel(PreviewPixmapLabel):
         *,
         corner_radius: float = 0.0,
         show_placeholder_frame: bool = True,
+        show_inactive_border: bool = False,
     ) -> None:
         super().__init__(
             placeholder,
             parent,
             corner_radius=corner_radius,
             show_placeholder_frame=show_placeholder_frame,
+            show_inactive_border=show_inactive_border,
         )
         self._ratio_width = ratio_width
         self._ratio_height = ratio_height
@@ -593,6 +630,7 @@ class MainWindow(QMainWindow):
             2,
             3,
             corner_radius=16,
+            show_inactive_border=True,
         )
         self._edit_overlay_icon = QIcon(
             _monochrome_icon_pixmap(
@@ -838,12 +876,14 @@ class MainWindow(QMainWindow):
                     ratio_width,
                     ratio_height,
                     corner_radius=corner_radius,
+                    show_inactive_border=True,
                 )
                 preview_label.setMinimumWidth(0)
             else:
                 preview_label = PreviewPixmapLabel(
                     self._missing_asset_pixmap(preview_width, preview_height),
                     corner_radius=corner_radius,
+                    show_inactive_border=True,
                 )
                 preview_label.setMinimumSize(preview_width, preview_height)
                 preview_label.setMaximumSize(preview_width, preview_height)
