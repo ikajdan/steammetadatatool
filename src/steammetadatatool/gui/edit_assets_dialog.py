@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QPoint, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
@@ -146,6 +146,7 @@ class EditAssetsDialog(QDialog):
         *,
         appid: str | None = None,
         app_name: str | None = None,
+        initial_asset_key: str | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -153,6 +154,8 @@ class EditAssetsDialog(QDialog):
         self.setModal(True)
         self.resize(1080, 760)
         self.setMinimumSize(720, 520)
+        self._scroll_area: QScrollArea | None = None
+        self._asset_cards: dict[str, QWidget] = {}
 
         action_icon_color = self.palette().placeholderText().color()
 
@@ -178,6 +181,7 @@ class EditAssetsDialog(QDialog):
         scroll = QScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._scroll_area = scroll
         dialog_layout.addWidget(scroll, 1)
 
         content = QWidget(scroll)
@@ -209,12 +213,19 @@ class EditAssetsDialog(QDialog):
                 size=size,
                 ratio=ratio,
             )
+            self._asset_cards[key] = card
             assets_layout.addWidget(card, 0, Qt.AlignmentFlag.AlignTop)
             if key != asset_specs[-1][0]:
                 separator = QFrame(assets_container)
                 separator.setFrameShape(QFrame.Shape.HLine)
                 separator.setFrameShadow(QFrame.Shadow.Sunken)
                 assets_layout.addWidget(separator)
+
+        if initial_asset_key is not None:
+            QTimer.singleShot(
+                0,
+                lambda: self._scroll_to_asset(initial_asset_key),
+            )
 
         dialog_actions = QWidget(self)
         dialog_actions_layout = QHBoxLayout(dialog_actions)
@@ -244,6 +255,23 @@ class EditAssetsDialog(QDialog):
         dialog_actions_layout.setStretch(0, 4)
         dialog_actions_layout.setStretch(1, 1)
         dialog_layout.addWidget(dialog_actions)
+
+    def _scroll_to_asset(self, key: str) -> None:
+        if self._scroll_area is None:
+            return
+
+        card = self._asset_cards.get(key)
+        if card is None:
+            return
+
+        content = self._scroll_area.widget()
+        if content is None:
+            return
+
+        scroll_bar = self._scroll_area.verticalScrollBar()
+        target_y = card.mapTo(content, QPoint(0, 0)).y()
+        top_margin = 8
+        scroll_bar.setValue(max(0, min(target_y - top_margin, scroll_bar.maximum())))
 
     def _create_asset_card(
         self,

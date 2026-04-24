@@ -3,9 +3,9 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
-from PySide6.QtCore import QEvent, QSize, Qt
+from PySide6.QtCore import QEvent, QSize, Qt, QVariantAnimation
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import (
     QApplication,
@@ -315,6 +315,16 @@ class PreviewPixmapLabel(QLabel):
         self._placeholder_pixmap = placeholder
         self._corner_radius = corner_radius
         self._show_placeholder_frame = show_placeholder_frame
+        self._hovered = False
+        self._click_handler: Callable[[], None] | None = None
+        self._show_click_overlay = False
+        self._overlay_icon = QIcon()
+        self._overlay_opacity = 0.0
+        self._overlay_animation = QVariantAnimation(self)
+        self._overlay_animation.setDuration(250)
+        self._overlay_animation.setStartValue(0.0)
+        self._overlay_animation.setEndValue(1.0)
+        self._overlay_animation.valueChanged.connect(self._on_overlay_opacity_changed)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setFrameShape(
             QFrame.Shape.StyledPanel
@@ -325,6 +335,35 @@ class PreviewPixmapLabel(QLabel):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
+        self.setMouseTracking(True)
+
+    def set_click_handler(
+        self,
+        handler: Callable[[], None] | None,
+        overlay_icon: QIcon | None = None,
+        *,
+        show_overlay: bool = True,
+    ) -> None:
+        self._click_handler = handler
+        self._show_click_overlay = handler is not None and show_overlay
+        if overlay_icon is not None:
+            self._overlay_icon = overlay_icon
+        if not self._show_click_overlay:
+            self._overlay_animation.stop()
+            self._overlay_opacity = 0.0
+        self.setCursor(
+            Qt.CursorShape.PointingHandCursor
+            if handler is not None
+            else Qt.CursorShape.ArrowCursor
+        )
+        self.update()
+
+    def _on_overlay_opacity_changed(self, value) -> None:
+        try:
+            self._overlay_opacity = float(value)
+        except (TypeError, ValueError):
+            self._overlay_opacity = 0.0
+        self.update()
 
     def set_source_pixmap(self, pixmap: QPixmap | None) -> None:
         self._source_pixmap = pixmap if pixmap and not pixmap.isNull() else None
@@ -337,6 +376,81 @@ class PreviewPixmapLabel(QLabel):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._refresh_pixmap()
+
+    def enterEvent(self, event) -> None:
+        self._hovered = True
+        self._animate_overlay(visible=True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._hovered = False
+        self._animate_overlay(visible=False)
+        super().leaveEvent(event)
+
+    def _animate_overlay(self, *, visible: bool) -> None:
+        if not self._show_click_overlay:
+            self._overlay_opacity = 0.0
+            self._overlay_animation.stop()
+            self.update()
+            return
+
+        self._overlay_animation.stop()
+        self._overlay_animation.setStartValue(self._overlay_opacity)
+        self._overlay_animation.setEndValue(1.0 if visible else 0.0)
+        self._overlay_animation.start()
+
+    def mouseReleaseEvent(self, event) -> None:
+        if (
+            self._click_handler is not None
+            and event.button() == Qt.MouseButton.LeftButton
+            and self.rect().contains(event.position().toPoint())
+        ):
+            self._click_handler()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if (
+            self._click_handler is None
+            or not self._show_click_overlay
+            or self._overlay_opacity <= 0.0
+        ):
+            return
+
+        pixmap = self.pixmap()
+        if pixmap is None or pixmap.isNull():
+            return
+
+        pixmap_rect = pixmap.rect()
+        pixmap_rect.moveTo(
+            (self.width() - pixmap.width()) // 2,
+            (self.height() - pixmap.height()) // 2,
+        )
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        overlay_size = 30
+        margin = 10
+        overlay_rect = pixmap_rect.adjusted(
+            pixmap_rect.width() - overlay_size - margin,
+            margin,
+            -margin,
+            -(pixmap_rect.height() - overlay_size - margin),
+        )
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setOpacity(self._overlay_opacity)
+        painter.setBrush(QColor(0, 0, 0, 150))
+        painter.drawRoundedRect(overlay_rect, 10, 10)
+
+        icon = self._overlay_icon.pixmap(16, 16)
+        if not icon.isNull():
+            x = overlay_rect.x() + (overlay_rect.width() - icon.width()) // 2
+            y = overlay_rect.y() + (overlay_rect.height() - icon.height()) // 2
+            painter.drawPixmap(x, y, icon)
+        painter.end()
 
     def _refresh_pixmap(self) -> None:
         pixmap = self._source_pixmap or self._placeholder_pixmap
@@ -479,6 +593,22 @@ class MainWindow(QMainWindow):
             2,
             3,
             corner_radius=16,
+        )
+        self._edit_overlay_icon = QIcon(
+            _monochrome_icon_pixmap(
+                QIcon.fromTheme(
+                    "document-edit",
+                    self.style().standardIcon(
+                        QStyle.StandardPixmap.SP_FileDialogDetailedView
+                    ),
+                ),
+                16,
+                QColor("white"),
+            )
+        )
+        self._capsule_preview.set_click_handler(
+            lambda: self._open_edit_assets_dialog("capsule_path"),
+            self._edit_overlay_icon,
         )
         self._details_form_container: QWidget | None = None
 
@@ -648,6 +778,10 @@ class MainWindow(QMainWindow):
                 )
                 value_label.setMinimumSize(preview_width, preview_height)
                 value_label.setMaximumSize(preview_width, preview_height)
+                value_label.set_click_handler(
+                    lambda asset_key=key: self._open_edit_assets_dialog(asset_key),
+                    show_overlay=False,
+                )
                 self._asset_image_labels[key] = value_label
             else:
                 value_label = QLabel("-")
@@ -716,6 +850,10 @@ class MainWindow(QMainWindow):
             self._asset_image_labels[key] = preview_label
             self._asset_boxes[key] = asset_box
             self._asset_image_specs[key] = size
+            preview_label.set_click_handler(
+                lambda asset_key=key: self._open_edit_assets_dialog(asset_key),
+                self._edit_overlay_icon,
+            )
             asset_box_layout.addWidget(preview_label)
             return asset_box
 
@@ -839,7 +977,7 @@ class MainWindow(QMainWindow):
         )
         dialog.exec()
 
-    def _open_edit_assets_dialog(self) -> None:
+    def _open_edit_assets_dialog(self, initial_asset_key: str | None = None) -> None:
         appid = self._current_selected_appid()
         if appid is None:
             QMessageBox.information(
@@ -868,6 +1006,7 @@ class MainWindow(QMainWindow):
             },
             appid=details.get("appid") if details is not None else None,
             app_name=details.get("name") if details is not None else None,
+            initial_asset_key=initial_asset_key,
             parent=self,
         )
         dialog.exec()
