@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from steammetadatatool import __version__
 from steammetadatatool.core.appinfo import (
     AppInfoFile,
     find_steam_appinfo_path,
@@ -1357,6 +1358,11 @@ class MainWindow(QMainWindow):
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="steam_appinfo_gui")
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+    )
     parser.add_argument(
         "path",
         nargs="?",

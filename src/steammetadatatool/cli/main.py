@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from steammetadatatool import __version__
 from steammetadatatool.core.models import CliRequest, OverrideInput
 from steammetadatatool.core.services import parse_aliases, parse_set_arg
 from steammetadatatool.core.use_cases import execute_cli_request
@@ -26,6 +27,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="steam_appinfo_parser",
         description="A tool for reading and editing Steam client metadata.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
         "path",
