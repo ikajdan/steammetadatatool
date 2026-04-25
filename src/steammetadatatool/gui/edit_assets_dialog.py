@@ -137,6 +137,14 @@ def _cleanup_old_grid_asset_files(final_path: Path) -> None:
             candidate.unlink()
 
 
+def _remove_grid_asset_files(grid_dir: Path, appid: str, asset_key: str) -> None:
+    base_path = grid_dir / f"{appid}{_STEAM_GRID_BASENAME_SUFFIXES[asset_key]}"
+    for suffix in _STEAM_GRID_EXTENSIONS:
+        candidate = base_path.with_suffix(suffix)
+        if candidate.exists() or candidate.is_symlink():
+            candidate.unlink()
+
+
 def _replace_with_file_copy(
     source: Path, target: Path, *, cleanup_grid_extensions: bool = False
 ) -> None:
@@ -169,6 +177,16 @@ def _apply_icon_asset(appid: str, source: Path) -> None:
     )
     if not resized.save(str(cached_icon_path), "JPG"):
         raise OSError(f"Could not write Steam icon cache file: {cached_icon_path}")
+
+
+def _restore_icon_asset(appid: str) -> None:
+    cached_icon_path = cached_icon_path_for_app(appid)
+    if cached_icon_path is None:
+        raise FileNotFoundError(f"No cached Steam icon was found for app {appid}.")
+
+    original_icon_path = original_icon_path_for_cached_icon(cached_icon_path)
+    if original_icon_path.is_file():
+        original_icon_path.replace(cached_icon_path)
 
 
 def _write_selected_assets_manifest(
@@ -509,6 +527,7 @@ class EditAssetsDialog(QDialog):
         self._appid = str(appid) if appid is not None else None
         self._custom_assets_by_key = _custom_asset_paths_for_app(appid)
         self._selected_custom_paths_by_key: dict[str, Path] = {}
+        self._default_selected_asset_keys: set[str] = set()
         saved_asset_names = _selected_asset_names_for_app(self._appid)
         for key, paths in self._custom_assets_by_key.items():
             saved_name = saved_asset_names.get(_custom_asset_key_name(key))
@@ -851,8 +870,10 @@ class EditAssetsDialog(QDialog):
             self._selected_custom_paths_by_key[asset_key] = Path(
                 selected_variant.asset_path
             )
+            self._default_selected_asset_keys.discard(asset_key)
         else:
             self._selected_custom_paths_by_key.pop(asset_key, None)
+            self._default_selected_asset_keys.add(asset_key)
 
     def _apply_selected_assets(self) -> None:
         if self._appid is None:
@@ -862,6 +883,10 @@ class EditAssetsDialog(QDialog):
         try:
             grid_dir = steam_grid_dir()
             for asset_key in _STEAM_GRID_BASENAME_SUFFIXES:
+                if asset_key in self._default_selected_asset_keys:
+                    _remove_grid_asset_files(grid_dir, self._appid, asset_key)
+                    continue
+
                 source_path = self._selected_custom_paths_by_key.get(asset_key)
                 if source_path is None:
                     continue
@@ -882,10 +907,16 @@ class EditAssetsDialog(QDialog):
                         preset_path,
                         grid_dir / f"{self._appid}.json",
                     )
+            elif "hero_path" in self._default_selected_asset_keys:
+                preset_target = grid_dir / f"{self._appid}.json"
+                if preset_target.exists() or preset_target.is_symlink():
+                    preset_target.unlink()
 
             icon_path = self._selected_custom_paths_by_key.get("icon_path")
             if icon_path is not None:
                 _apply_icon_asset(self._appid, icon_path)
+            elif "icon_path" in self._default_selected_asset_keys:
+                _restore_icon_asset(self._appid)
 
             _write_selected_assets_manifest(
                 self._appid,
