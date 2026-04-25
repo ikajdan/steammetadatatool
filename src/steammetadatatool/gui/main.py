@@ -32,110 +32,11 @@ from PySide6.QtWidgets import (
 from steammetadatatool.core.appinfo import (
     AppInfoFile,
     find_steam_appinfo_path,
-    steam_base_paths,
 )
 from steammetadatatool.core.keyvalues1 import kv_deep_get
 from steammetadatatool.gui.edit_assets_dialog import EditAssetsDialog
 from steammetadatatool.gui.edit_metadata_dialog import EditMetadataDialog
-
-
-def _steam_librarycache_roots() -> list[Path]:
-    return [base / "appcache" / "librarycache" for base in steam_base_paths()]
-
-
-def _librarycache_dir_for_app(appid: int) -> Path | None:
-    for root in _steam_librarycache_roots():
-        app_cache_dir = root / str(appid)
-        if app_cache_dir.is_dir():
-            return app_cache_dir
-    return None
-
-
-def _find_asset_file(base_dir: Path, *filenames: str) -> str:
-    """Find an asset file in base_dir or its subdirectories.
-
-    Checks each filename in order, first at the root, then in subdirectories.
-    Returns the path to the first file found, or "-" if none found.
-    """
-    for filename in filenames:
-        root_path = base_dir / filename
-        if root_path.is_file():
-            return str(root_path)
-
-        try:
-            for subdir in base_dir.iterdir():
-                if subdir.is_dir():
-                    candidate = subdir / filename
-                    if candidate.is_file():
-                        return str(candidate)
-        except (OSError, PermissionError):
-            pass
-
-    return "-"
-
-
-def _cached_icon_path(appid: int) -> str:
-    app_cache_dir = _librarycache_dir_for_app(appid)
-    if app_cache_dir is None:
-        return "-"
-
-    candidates = sorted(
-        p
-        for p in app_cache_dir.iterdir()
-        if p.is_file()
-        and p.suffix.lower() == ".jpg"
-        and len(p.stem) == 40
-        and all(ch in "0123456789abcdef" for ch in p.stem)
-    )
-    if candidates:
-        return str(candidates[0])
-
-    try:
-        for subdir in app_cache_dir.iterdir():
-            if subdir.is_dir():
-                candidates = sorted(
-                    p
-                    for p in subdir.iterdir()
-                    if p.is_file()
-                    and p.suffix.lower() == ".jpg"
-                    and len(p.stem) == 40
-                    and all(ch in "0123456789abcdef" for ch in p.stem)
-                )
-                if candidates:
-                    return str(candidates[0])
-    except (OSError, PermissionError):
-        pass
-
-    return "-"
-
-
-def _asset_paths_for_app(appid: int) -> dict[str, str]:
-    app_cache_dir = _librarycache_dir_for_app(appid)
-    if app_cache_dir is None:
-        return {
-            "header_path": "-",
-            "capsule_path": "-",
-            "hero_path": "-",
-            "logo_path": "-",
-            "icon_path": "-",
-        }
-
-    return {
-        "header_path": _find_asset_file(
-            app_cache_dir, "header.jpg", "library_header.jpg", "header_2x.jpg"
-        ),
-        "capsule_path": _find_asset_file(
-            app_cache_dir,
-            "library_600x900.jpg",
-            "library_600x900_2x.jpg",
-            "library_capsule.jpg",
-        ),
-        "hero_path": _find_asset_file(
-            app_cache_dir, "library_hero.jpg", "library_hero_2x.jpg"
-        ),
-        "logo_path": _find_asset_file(app_cache_dir, "logo.png", "logo_2x.png"),
-        "icon_path": _cached_icon_path(appid),
-    }
+from steammetadatatool.gui.steam_user import asset_paths_for_app
 
 
 def _library_logo_position(data: dict[str, Any]) -> dict[str, Any] | None:
@@ -1075,7 +976,7 @@ class MainWindow(QMainWindow):
                     rows.append((app.appid, name))
                     filter_matches_by_appid[app.appid] = _matches_game_filter(app.data)
 
-                    asset_paths = _asset_paths_for_app(app.appid)
+                    asset_paths = asset_paths_for_app(app.appid)
 
                     details_by_appid[app.appid] = {
                         "_raw_metadata": app.data,

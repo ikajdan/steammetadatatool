@@ -98,32 +98,87 @@ def steam_librarycache_dir_for_app(appid: str) -> Path | None:
     return None
 
 
-def cached_icon_path_for_app(appid: str) -> Path | None:
-    app_cache_dir = steam_librarycache_dir_for_app(appid)
+def _find_asset_file(base_dir: Path, *filenames: str) -> str:
+    for filename in filenames:
+        root_path = base_dir / filename
+        if root_path.is_file():
+            return str(root_path)
+
+        try:
+            for subdir in base_dir.iterdir():
+                if subdir.is_dir():
+                    candidate = subdir / filename
+                    if candidate.is_file():
+                        return str(candidate)
+        except (OSError, PermissionError):
+            pass
+
+    return "-"
+
+
+def cached_icon_path_for_app(appid: str | int) -> Path | None:
+    app_cache_dir = steam_librarycache_dir_for_app(str(appid))
     if app_cache_dir is None:
         return None
 
-    candidates = sorted(
-        path
-        for path in app_cache_dir.iterdir()
-        if path.is_file()
-        and path.suffix.lower() == ".jpg"
-        and len(path.stem) == 40
-        and all(char in "0123456789abcdef" for char in path.stem)
-    )
-    if candidates:
-        return candidates[0]
-
-    for subdir in sorted(path for path in app_cache_dir.iterdir() if path.is_dir()):
+    try:
         candidates = sorted(
             path
-            for path in subdir.iterdir()
+            for path in app_cache_dir.iterdir()
             if path.is_file()
             and path.suffix.lower() == ".jpg"
             and len(path.stem) == 40
             and all(char in "0123456789abcdef" for char in path.stem)
         )
-        if candidates:
-            return candidates[0]
+    except (OSError, PermissionError):
+        return None
+
+    if candidates:
+        return candidates[0]
+
+    try:
+        for subdir in sorted(path for path in app_cache_dir.iterdir() if path.is_dir()):
+            candidates = sorted(
+                path
+                for path in subdir.iterdir()
+                if path.is_file()
+                and path.suffix.lower() == ".jpg"
+                and len(path.stem) == 40
+                and all(char in "0123456789abcdef" for char in path.stem)
+            )
+            if candidates:
+                return candidates[0]
+    except (OSError, PermissionError):
+        pass
 
     return None
+
+
+def asset_paths_for_app(appid: int) -> dict[str, str]:
+    app_cache_dir = steam_librarycache_dir_for_app(str(appid))
+    if app_cache_dir is None:
+        return {
+            "header_path": "-",
+            "capsule_path": "-",
+            "hero_path": "-",
+            "logo_path": "-",
+            "icon_path": "-",
+        }
+
+    cached_icon_path = cached_icon_path_for_app(appid)
+    return {
+        "header_path": _find_asset_file(
+            app_cache_dir, "header.jpg", "library_header.jpg", "header_2x.jpg"
+        ),
+        "capsule_path": _find_asset_file(
+            app_cache_dir,
+            "library_600x900.jpg",
+            "library_600x900_2x.jpg",
+            "library_capsule.jpg",
+        ),
+        "hero_path": _find_asset_file(
+            app_cache_dir, "library_hero.jpg", "library_hero_2x.jpg"
+        ),
+        "logo_path": _find_asset_file(app_cache_dir, "logo.png", "logo_2x.png"),
+        "icon_path": str(cached_icon_path) if cached_icon_path is not None else "-",
+    }
