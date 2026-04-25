@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Callable
 
@@ -10,6 +11,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -19,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from steammetadatatool.core.appinfo import steam_base_paths
 from steammetadatatool.gui.edit_metadata_dialog import (
     ElidedLabel,
     _monochrome_icon_pixmap,
@@ -35,10 +38,54 @@ _CUSTOM_ASSET_DIRS = {
 _ASSET_CATEGORY_SIDE_PADDING = 0
 _ASSET_NAV_BUTTON_SIZE = 44
 _ASSET_NAV_SCROLLBAR_GAP = 8
+_STEAM_GRID_BASENAME_SUFFIXES = {
+    "capsule_path": "p",
+    "header_path": "",
+    "hero_path": "_hero",
+    "logo_path": "_logo",
+}
+_STEAM_GRID_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 
 def _project_root() -> Path:
     return Path(__file__).resolve().parents[3]
+
+
+def _assets_manifest_path() -> Path:
+    return _project_root() / "assets.json"
+
+
+def _custom_asset_key_name(asset_key: str) -> str:
+    return _CUSTOM_ASSET_DIRS[asset_key]
+
+
+def _load_assets_manifest() -> dict[str, object]:
+    path = _assets_manifest_path()
+    if not path.exists():
+        return {}
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
+
+
+def _selected_asset_names_for_app(appid: str | None) -> dict[str, str]:
+    if not appid:
+        return {}
+
+    try:
+        manifest = _load_assets_manifest()
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+    app_entry = manifest.get(str(appid))
+    if not isinstance(app_entry, dict):
+        return {}
+
+    return {
+        str(key): str(value)
+        for key, value in app_entry.items()
+        if isinstance(value, str) and value
+    }
 
 
 def _custom_asset_paths_for_app(appid: str | None) -> dict[str, list[str]]:
@@ -50,11 +97,14 @@ def _custom_asset_paths_for_app(appid: str | None) -> dict[str, list[str]]:
     if not base_dir.is_dir():
         return custom_assets
 
-    supported_suffixes = {".png", ".jpg", ".jpeg", ".webp"}
     for key, dirname in _CUSTOM_ASSET_DIRS.items():
         asset_dir = base_dir / dirname
         if not asset_dir.is_dir():
             continue
+
+        supported_suffixes = {".png", ".jpg", ".jpeg"}
+        if key == "icon_path":
+            supported_suffixes.add(".ico")
 
         custom_assets[key] = [
             str(path)
@@ -63,6 +113,151 @@ def _custom_asset_paths_for_app(appid: str | None) -> dict[str, list[str]]:
         ]
 
     return custom_assets
+
+
+def _steam_grid_dir() -> Path:
+    for base in steam_base_paths():
+        userdata_dir = base / "userdata"
+        if not userdata_dir.is_dir():
+            continue
+
+        user_dirs = sorted(
+            path
+            for path in userdata_dir.iterdir()
+            if path.is_dir() and path.name.isdigit()
+        )
+        if user_dirs:
+            return user_dirs[0] / "config" / "grid"
+
+    raise FileNotFoundError(
+        "No Steam userdata directory with a numeric user id was found."
+    )
+
+
+def _steam_librarycache_dir_for_app(appid: str) -> Path | None:
+    for base in steam_base_paths():
+        app_cache_dir = base / "appcache" / "librarycache" / appid
+        if app_cache_dir.is_dir():
+            return app_cache_dir
+    return None
+
+
+def _cached_icon_path_for_app(appid: str) -> Path | None:
+    app_cache_dir = _steam_librarycache_dir_for_app(appid)
+    if app_cache_dir is None:
+        return None
+
+    candidates = sorted(
+        path
+        for path in app_cache_dir.iterdir()
+        if path.is_file()
+        and path.suffix.lower() == ".jpg"
+        and len(path.stem) == 40
+        and all(char in "0123456789abcdef" for char in path.stem)
+    )
+    if candidates:
+        return candidates[0]
+
+    for subdir in sorted(path for path in app_cache_dir.iterdir() if path.is_dir()):
+        candidates = sorted(
+            path
+            for path in subdir.iterdir()
+            if path.is_file()
+            and path.suffix.lower() == ".jpg"
+            and len(path.stem) == 40
+            and all(char in "0123456789abcdef" for char in path.stem)
+        )
+        if candidates:
+            return candidates[0]
+
+    return None
+
+
+def _steam_grid_target(appid: str, asset_key: str, source: Path) -> Path:
+    source_suffix = source.suffix.lower()
+    if source_suffix not in _STEAM_GRID_EXTENSIONS:
+        raise ValueError(f"Unsupported Steam grid asset extension: {source.suffix}")
+
+    return (
+        _steam_grid_dir()
+        / f"{appid}{_STEAM_GRID_BASENAME_SUFFIXES[asset_key]}{source_suffix}"
+    )
+
+
+def _cleanup_old_grid_asset_files(final_path: Path) -> None:
+    base_path = final_path.with_suffix("")
+    for suffix in _STEAM_GRID_EXTENSIONS:
+        candidate = base_path.with_suffix(suffix)
+        if candidate != final_path and (candidate.exists() or candidate.is_symlink()):
+            candidate.unlink()
+
+
+def _replace_with_file_copy(
+    source: Path, target: Path, *, cleanup_grid_extensions: bool = False
+) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if cleanup_grid_extensions:
+        _cleanup_old_grid_asset_files(target)
+    if target.exists() or target.is_symlink():
+        target.unlink()
+    target.write_bytes(source.read_bytes())
+
+
+def _apply_icon_asset(appid: str, source: Path) -> None:
+    cached_icon_path = _cached_icon_path_for_app(appid)
+    if cached_icon_path is None:
+        raise FileNotFoundError(f"No cached Steam icon was found for app {appid}.")
+
+    backup_path = cached_icon_path.with_name(cached_icon_path.name + ".bak")
+    if not backup_path.exists() and cached_icon_path.exists():
+        backup_path.write_bytes(cached_icon_path.read_bytes())
+
+    pixmap = QPixmap(str(source))
+    if pixmap.isNull():
+        raise ValueError(f"Could not load icon asset: {source}")
+
+    resized = pixmap.scaled(
+        32,
+        32,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.SmoothTransformation,
+    )
+    if not resized.save(str(cached_icon_path), "JPG"):
+        raise OSError(f"Could not write Steam icon cache file: {cached_icon_path}")
+
+
+def _write_selected_assets_manifest(
+    appid: str, selected_paths_by_key: dict[str, Path]
+) -> None:
+    manifest_path = _assets_manifest_path()
+    manifest = _load_assets_manifest()
+
+    app_entry = manifest.get(appid)
+    if not isinstance(app_entry, dict):
+        app_entry = {}
+
+    for asset_key in _CUSTOM_ASSET_DIRS:
+        app_entry.pop(_custom_asset_key_name(asset_key), None)
+    app_entry.pop("preset", None)
+
+    for asset_key, source_path in selected_paths_by_key.items():
+        app_entry[_custom_asset_key_name(asset_key)] = source_path.name
+
+    hero_path = selected_paths_by_key.get("hero_path")
+    if hero_path is not None:
+        preset_path = hero_path.parent.parent / "preset" / f"{hero_path.stem}.json"
+        if preset_path.is_file():
+            app_entry["preset"] = preset_path.name
+
+    if app_entry:
+        manifest[appid] = app_entry
+    else:
+        manifest.pop(appid, None)
+
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
 
 
 class PreviewPixmapLabel(QLabel):
@@ -224,10 +419,14 @@ class AssetVariantFrame(QFrame):
         self,
         parent: QWidget | None = None,
         *,
+        path: str,
+        is_custom: bool,
         on_select: Callable[[], None] | None = None,
         show_selection_frame: bool = True,
     ) -> None:
         super().__init__(parent)
+        self.asset_path = path
+        self.is_custom = is_custom
         self._on_select = on_select
         self._is_selected = False
         self._show_selection_frame = show_selection_frame
@@ -362,7 +561,21 @@ class EditAssetsDialog(QDialog):
         self._initial_asset_key = initial_asset_key
         self._did_initial_asset_scroll = False
         self._initial_asset_scroll_attempts = 0
+        self._appid = str(appid) if appid is not None else None
         self._custom_assets_by_key = _custom_asset_paths_for_app(appid)
+        self._selected_custom_paths_by_key: dict[str, Path] = {}
+        saved_asset_names = _selected_asset_names_for_app(self._appid)
+        for key, paths in self._custom_assets_by_key.items():
+            saved_name = saved_asset_names.get(_custom_asset_key_name(key))
+            if saved_name is None:
+                continue
+
+            matching_path = next(
+                (Path(path) for path in paths if Path(path).name == saved_name),
+                None,
+            )
+            if matching_path is not None:
+                self._selected_custom_paths_by_key[key] = matching_path
 
         action_icon_color = self.palette().placeholderText().color()
 
@@ -440,6 +653,25 @@ class EditAssetsDialog(QDialog):
         dialog_actions_layout.setSpacing(12)
         dialog_actions_layout.addStretch(1)
 
+        apply_icon = QIcon.fromTheme(
+            "dialog-ok-apply",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton),
+        )
+        apply_button = QPushButton(
+            QIcon(_monochrome_icon_pixmap(apply_icon, 24, action_icon_color)),
+            "Apply",
+            dialog_actions,
+        )
+        apply_button.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        apply_button.setMinimumHeight(40)
+        apply_button.setMaximumWidth(360)
+        apply_button.setIconSize(QSize(24, 24))
+        apply_button.clicked.connect(self._apply_selected_assets)
+        dialog_actions_layout.addWidget(apply_button)
+
         close_icon = QIcon.fromTheme(
             "dialog-close",
             self.style().standardIcon(QStyle.StandardPixmap.SP_DialogCloseButton),
@@ -459,8 +691,9 @@ class EditAssetsDialog(QDialog):
         close_button.clicked.connect(self.accept)
         dialog_actions_layout.addWidget(close_button)
 
-        dialog_actions_layout.setStretch(0, 4)
+        dialog_actions_layout.setStretch(0, 3)
         dialog_actions_layout.setStretch(1, 1)
+        dialog_actions_layout.setStretch(2, 1)
         dialog_layout.addWidget(dialog_actions)
 
     def resizeEvent(self, event) -> None:
@@ -599,7 +832,8 @@ class EditAssetsDialog(QDialog):
                 path=original_path,
                 size=size,
                 ratio=ratio,
-                is_current=True,
+                is_current=key not in self._selected_custom_paths_by_key,
+                is_custom=False,
                 show_selection_frame=show_selection_frame,
                 parent=variants_row,
             ),
@@ -614,7 +848,10 @@ class EditAssetsDialog(QDialog):
                     path=custom_path,
                     size=size,
                     ratio=ratio,
-                    is_current=False,
+                    is_current=(
+                        self._selected_custom_paths_by_key.get(key) == Path(custom_path)
+                    ),
+                    is_custom=True,
                     show_selection_frame=show_selection_frame,
                     parent=variants_row,
                 ),
@@ -638,12 +875,15 @@ class EditAssetsDialog(QDialog):
         size: tuple[int, int],
         ratio: tuple[int, int] | None,
         is_current: bool,
+        is_custom: bool,
         show_selection_frame: bool,
         parent: QWidget,
     ) -> QWidget:
         preview_width, preview_height = size
         variant = AssetVariantFrame(
             parent,
+            path=path,
+            is_custom=is_custom,
             on_select=lambda: self._select_asset_variant(asset_key, variant),
             show_selection_frame=show_selection_frame,
         )
@@ -667,6 +907,55 @@ class EditAssetsDialog(QDialog):
     ) -> None:
         for variant in self._asset_variants.get(asset_key, []):
             variant.set_selected(variant is selected_variant)
+        if selected_variant.is_custom:
+            self._selected_custom_paths_by_key[asset_key] = Path(
+                selected_variant.asset_path
+            )
+        else:
+            self._selected_custom_paths_by_key.pop(asset_key, None)
+
+    def _apply_selected_assets(self) -> None:
+        if self._appid is None:
+            QMessageBox.warning(self, "Edit Assets", "No app id is available.")
+            return
+
+        try:
+            grid_dir = _steam_grid_dir()
+            for asset_key in _STEAM_GRID_BASENAME_SUFFIXES:
+                source_path = self._selected_custom_paths_by_key.get(asset_key)
+                if source_path is None:
+                    continue
+
+                _replace_with_file_copy(
+                    source_path,
+                    _steam_grid_target(self._appid, asset_key, source_path),
+                    cleanup_grid_extensions=True,
+                )
+
+            hero_path = self._selected_custom_paths_by_key.get("hero_path")
+            if hero_path is not None:
+                preset_path = (
+                    hero_path.parent.parent / "preset" / f"{hero_path.stem}.json"
+                )
+                if preset_path.is_file():
+                    _replace_with_file_copy(
+                        preset_path,
+                        grid_dir / f"{self._appid}.json",
+                    )
+
+            icon_path = self._selected_custom_paths_by_key.get("icon_path")
+            if icon_path is not None:
+                _apply_icon_asset(self._appid, icon_path)
+
+            _write_selected_assets_manifest(
+                self._appid,
+                dict(self._selected_custom_paths_by_key),
+            )
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            QMessageBox.critical(self, "Edit Assets", str(exc))
+            return
+
+        self.accept()
 
     def _scroll_asset_variants(self, asset_key: str, direction: int) -> None:
         scroll_area = self._asset_variant_scroll_areas.get(asset_key)
