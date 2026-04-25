@@ -12,8 +12,17 @@ from PySide6.QtCore import (
     QSize,
     Qt,
     QTimer,
+    QUrl,
 )
-from PySide6.QtGui import QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import (
+    QDesktopServices,
+    QFont,
+    QIcon,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -620,6 +629,26 @@ class EditAssetsDialog(QDialog):
             QSizePolicy.Policy.Fixed,
         )
         header_row_layout.addWidget(self._app_name_label)
+
+        folder_icon = QIcon.fromTheme(
+            "folder-open",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon),
+        )
+        open_folder_button = QPushButton(
+            QIcon(_monochrome_icon_pixmap(folder_icon, 18, action_icon_color, 6)),
+            "Open Assets Folder",
+            header_row,
+        )
+        open_folder_button.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        open_folder_button.setMinimumHeight(40)
+        open_folder_button.setMinimumWidth(210)
+        open_folder_button.setMaximumWidth(360)
+        open_folder_button.setIconSize(QSize(24, 18))
+        open_folder_button.clicked.connect(self._open_asset_folder)
+        header_row_layout.addWidget(open_folder_button, 0, Qt.AlignmentFlag.AlignRight)
         dialog_layout.addWidget(header_row)
 
         heading_separator = QFrame(self)
@@ -675,6 +704,7 @@ class EditAssetsDialog(QDialog):
         dialog_actions_layout = QHBoxLayout(dialog_actions)
         dialog_actions_layout.setContentsMargins(0, 0, 0, 0)
         dialog_actions_layout.setSpacing(12)
+
         dialog_actions_layout.addStretch(1)
 
         apply_icon = QIcon.fromTheme(
@@ -1071,6 +1101,28 @@ class EditAssetsDialog(QDialog):
         )
         self._default_selected_asset_keys.clear()
         self._refresh_unapplied_state()
+
+    def _open_asset_folder(self) -> None:
+        if self._appid is None:
+            QMessageBox.warning(self, "Edit Assets", "No app id is available.")
+            return
+
+        app_assets_dir = _assets_dir() / self._appid
+        try:
+            app_assets_dir.mkdir(parents=True, exist_ok=True)
+            for dirname in sorted(set(_CUSTOM_ASSET_DIRS.values()) | {"preset"}):
+                (app_assets_dir / dirname).mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            QMessageBox.critical(self, "Edit Assets", str(exc))
+            return
+
+        did_open = QDesktopServices.openUrl(QUrl.fromLocalFile(str(app_assets_dir)))
+        if not did_open:
+            QMessageBox.warning(
+                self,
+                "Edit Assets",
+                f"Could not open asset folder:\n{app_assets_dir}",
+            )
 
     def _scroll_asset_variants(self, asset_key: str, direction: int) -> None:
         scroll_area = self._asset_variant_scroll_areas.get(asset_key)
