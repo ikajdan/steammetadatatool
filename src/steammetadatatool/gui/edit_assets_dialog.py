@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from steammetadatatool.gui.app_data import app_data_path
 from steammetadatatool.gui.edit_metadata_dialog import (
     ElidedLabel,
     _monochrome_icon_pixmap,
@@ -50,12 +51,12 @@ _STEAM_GRID_BASENAME_SUFFIXES = {
 _STEAM_GRID_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 
-def _project_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
 def _assets_manifest_path() -> Path:
-    return _project_root() / "assets.json"
+    return app_data_path("assets.json")
+
+
+def _assets_dir() -> Path:
+    return app_data_path("assets")
 
 
 def _custom_asset_key_name(asset_key: str) -> str:
@@ -96,7 +97,7 @@ def _custom_asset_paths_for_app(appid: str | None) -> dict[str, list[str]]:
     if not appid:
         return custom_assets
 
-    base_dir = _project_root() / "assets" / appid
+    base_dir = _assets_dir() / appid
     if not base_dir.is_dir():
         return custom_assets
 
@@ -217,6 +218,7 @@ def _write_selected_assets_manifest(
     else:
         manifest.pop(appid, None)
 
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
     manifest_path.write_text(
         json.dumps(manifest, indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",

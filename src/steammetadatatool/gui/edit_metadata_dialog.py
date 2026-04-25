@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QSize, Qt
@@ -21,6 +20,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from steammetadatatool.gui.app_data import app_data_path
 
 
 def _monochrome_icon_pixmap(
@@ -314,7 +315,7 @@ class EditMetadataDialog(QDialog):
         }
 
         try:
-            changes_path = Path.cwd() / "user-changes.json"
+            changes_path = app_data_path("user-changes.json")
             existing_payload: list[dict[str, Any]] = []
             if changes_path.exists():
                 existing_data = json.loads(changes_path.read_text(encoding="utf-8"))
@@ -351,6 +352,7 @@ class EditMetadataDialog(QDialog):
             if not merged:
                 existing_payload.append(payload)
 
+            changes_path.parent.mkdir(parents=True, exist_ok=True)
             changes_path.write_text(
                 json.dumps(existing_payload, indent=2, ensure_ascii=True) + "\n",
                 encoding="utf-8",
