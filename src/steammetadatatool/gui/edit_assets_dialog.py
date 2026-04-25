@@ -4,8 +4,16 @@ import json
 from pathlib import Path
 from typing import Callable
 
-from PySide6.QtCore import QPoint, QSize, Qt, QTimer
-from PySide6.QtGui import QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtCore import (
+    QEasingCurve,
+    QPoint,
+    QPropertyAnimation,
+    QRectF,
+    QSize,
+    Qt,
+    QTimer,
+)
+from PySide6.QtGui import QFont, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
     QFrame,
@@ -42,6 +50,29 @@ _CUSTOM_ASSET_DIRS = {
 
 _ASSET_NAV_BUTTON_SIZE = 44
 _ASSET_NAV_SCROLLBAR_GAP = 8
+_ASSET_VARIANT_SPACING = 14
+_ASSET_INACTIVE_FRAME_WIDTH = 1.0
+_ASSET_ACTIVE_FRAME_WIDTH = 2.0
+_ASSET_VARIANT_FRAME_PADDING = int(_ASSET_ACTIVE_FRAME_WIDTH)
+_ASSET_SNAP_VISIBLE_THRESHOLD = 0.60
+_ASSET_PREVIEW_CORNER_RADIUS = 16.0
+_ASSET_VARIANT_FRAME_RADIUS = _ASSET_PREVIEW_CORNER_RADIUS + (
+    _ASSET_VARIANT_FRAME_PADDING
+)
+_ASSET_PREVIEW_MIN_WIDTHS = {
+    "capsule_path": 150,
+    "header_path": 260,
+    "hero_path": 320,
+    "logo_path": 180,
+    "icon_path": 48,
+}
+_ASSET_PREVIEW_MAX_WIDTHS = {
+    "capsule_path": 230,
+    "header_path": 380,
+    "hero_path": 720,
+    "logo_path": 320,
+    "icon_path": 64,
+}
 _STEAM_GRID_BASENAME_SUFFIXES = {
     "capsule_path": "p",
     "header_path": "",
@@ -250,6 +281,14 @@ class PreviewPixmapLabel(QLabel):
         self._source_pixmap = pixmap if pixmap and not pixmap.isNull() else None
         self._refresh_pixmap()
 
+    def set_preferred_size(self, size: QSize) -> None:
+        if self._preferred_size == size:
+            return
+
+        self._preferred_size = QSize(size)
+        self.updateGeometry()
+        self._refresh_pixmap()
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._refresh_pixmap()
@@ -258,7 +297,7 @@ class PreviewPixmapLabel(QLabel):
         return QSize(self._preferred_size)
 
     def minimumSizeHint(self) -> QSize:
-        return QSize(self._preferred_size)
+        return QSize(1, 1)
 
     def _refresh_pixmap(self) -> None:
         pixmap = self._source_pixmap or self._placeholder_pixmap
@@ -366,7 +405,7 @@ class RatioPreviewPixmapLabel(PreviewPixmapLabel):
         return QSize(width, self.heightForWidth(width))
 
     def minimumSizeHint(self) -> QSize:
-        return self.sizeHint()
+        return QSize(1, self.heightForWidth(1))
 
     def resizeEvent(self, event) -> None:
         target_height = self.heightForWidth(max(1, self.width()))
@@ -388,6 +427,7 @@ class AssetVariantFrame(QFrame):
         is_custom: bool,
         on_select: Callable[[], None] | None = None,
         show_selection_frame: bool = True,
+        is_selectable: bool = True,
     ) -> None:
         super().__init__(parent)
         self.asset_path = path
@@ -395,40 +435,54 @@ class AssetVariantFrame(QFrame):
         self._on_select = on_select
         self._is_selected = False
         self._show_selection_frame = show_selection_frame
+        self._show_active_frame = True
+        self._is_selectable = is_selectable
         self.setObjectName("assetVariantFrame")
         self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
         self.setCursor(
             Qt.CursorShape.PointingHandCursor
-            if show_selection_frame
+            if is_selectable
             else Qt.CursorShape.ArrowCursor
         )
 
-    def set_selected(self, selected: bool) -> None:
+    def set_selected(self, selected: bool, *, show_active_frame: bool = True) -> None:
         self._is_selected = selected
+        self._show_active_frame = show_active_frame
         if not self._show_selection_frame:
             self.setToolTip("")
-            self.setStyleSheet("#assetVariantFrame { border: none; }")
+            self.update()
             return
 
-        border_color = (
-            self.palette().highlight().color().name()
-            if selected
-            else self.palette().mid().color().name()
+        self.setToolTip("Selected asset" if selected and show_active_frame else "")
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if not self._show_selection_frame:
+            return
+
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if self._is_selected and self._show_active_frame:
+            pen = QPen(self.palette().highlight().color(), _ASSET_ACTIVE_FRAME_WIDTH)
+        else:
+            pen = QPen(self.palette().mid().color(), _ASSET_INACTIVE_FRAME_WIDTH)
+
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        inset = _ASSET_VARIANT_FRAME_PADDING - (pen.widthF() / 2)
+        painter.drawRoundedRect(
+            QRectF(self.rect()).adjusted(inset, inset, -inset, -inset),
+            _ASSET_VARIANT_FRAME_RADIUS,
+            _ASSET_VARIANT_FRAME_RADIUS,
         )
-        border_width = 2
-        border_style = "solid" if selected else "double"
-        self.setToolTip("Selected asset" if selected else "")
-        self.setStyleSheet(
-            "#assetVariantFrame {"
-            f" border: {border_width}px {border_style} {border_color};"
-            " border-radius: 16px; "
-            "}"
-        )
+        painter.end()
 
     def mouseReleaseEvent(self, event) -> None:
         if (
             self._on_select is not None
-            and self._show_selection_frame
+            and self._is_selectable
             and event.button() == Qt.MouseButton.LeftButton
             and self.rect().contains(event.position().toPoint())
         ):
@@ -476,29 +530,24 @@ class AssetNavButton(QToolButton):
         painter.setBrush(background_color)
         painter.drawEllipse(self.rect().adjusted(2, 2, -3, -3))
 
-        center = self.rect().center()
-        arrow_width = 8
-        arrow_height = 14
-        arrow_offset = 1
-        path = QPainterPath()
         if self.arrowType() == Qt.ArrowType.LeftArrow:
-            center.setX(center.x() - arrow_offset)
-            path.moveTo(center.x() - arrow_width // 2, center.y())
-            path.lineTo(center.x() + arrow_width // 2, center.y() - arrow_height // 2)
-            path.lineTo(center.x() + arrow_width // 2, center.y() + arrow_height // 2)
+            arrow_text = "←"
         elif self.arrowType() == Qt.ArrowType.RightArrow:
-            center.setX(center.x() + arrow_offset)
-            path.moveTo(center.x() + arrow_width // 2, center.y())
-            path.lineTo(center.x() - arrow_width // 2, center.y() - arrow_height // 2)
-            path.lineTo(center.x() - arrow_width // 2, center.y() + arrow_height // 2)
+            arrow_text = "→"
         else:
             painter.end()
             return
 
-        path.closeSubpath()
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(arrow_color)
-        painter.drawPath(path)
+        font = QFont(painter.font())
+        font.setPixelSize(16)
+        font.setWeight(QFont.Weight.Medium)
+        painter.setFont(font)
+        painter.setPen(arrow_color)
+        painter.drawText(
+            self.rect().adjusted(0, -2, 0, -2),
+            Qt.AlignmentFlag.AlignCenter,
+            arrow_text,
+        )
         painter.end()
 
 
@@ -523,6 +572,11 @@ class EditAssetsDialog(QDialog):
         self._asset_variant_scroll_areas: dict[str, QScrollArea] = {}
         self._asset_variant_control_rows: dict[str, QWidget] = {}
         self._asset_variant_buttons: dict[str, tuple[QToolButton, QToolButton]] = {}
+        self._asset_variant_preview_labels: dict[str, list[PreviewPixmapLabel]] = {}
+        self._asset_variant_sizes: dict[str, tuple[int, int]] = {}
+        self._asset_variant_ratios: dict[str, tuple[int, int] | None] = {}
+        self._asset_variant_counts: dict[str, int] = {}
+        self._asset_scroll_animations: dict[str, QPropertyAnimation] = {}
         self._asset_unapplied_labels: dict[str, QLabel] = {}
         self._initial_asset_key = initial_asset_key
         self._did_initial_asset_scroll = False
@@ -593,10 +647,10 @@ class EditAssetsDialog(QDialog):
         content_layout.addStretch(1)
 
         asset_specs: list[tuple[str, str, tuple[int, int], tuple[int, int] | None]] = [
-            ("capsule_path", "Capsule", (260, 390), (2, 3)),
-            ("header_path", "Header", (420, 196), (460, 215)),
-            ("hero_path", "Hero", (960, 310), (96, 31)),
-            ("logo_path", "Logo", (384, 120), None),
+            ("capsule_path", "Capsule", (230, 345), (2, 3)),
+            ("header_path", "Header", (380, 178), (460, 215)),
+            ("hero_path", "Hero", (720, 232), (96, 31)),
+            ("logo_path", "Logo", (320, 100), None),
             ("icon_path", "Icon", (48, 48), None),
         ]
 
@@ -669,10 +723,11 @@ class EditAssetsDialog(QDialog):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-        QTimer.singleShot(0, self._refresh_asset_variant_buttons)
+        QTimer.singleShot(0, self._refresh_asset_variant_rows)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        QTimer.singleShot(0, self._refresh_asset_variant_rows)
         if self._initial_asset_key is not None and not self._did_initial_asset_scroll:
             self._initial_asset_scroll_attempts = 0
             self._queue_initial_asset_scroll()
@@ -764,6 +819,9 @@ class EditAssetsDialog(QDialog):
         title_row_layout.addStretch(1)
         layout.addWidget(title_row)
         show_selection_frame = bool(custom_paths)
+        draw_variant_frame = True
+        self._asset_variant_counts[key] = 1 + len(custom_paths)
+        show_active_selection = self._asset_variant_counts[key] > 1
 
         controls_row = QWidget(card)
         controls_layout = QHBoxLayout(controls_row)
@@ -798,8 +856,11 @@ class EditAssetsDialog(QDialog):
         variants_row = QWidget(variants_scroll)
         variants_layout = QHBoxLayout(variants_row)
         variants_layout.setContentsMargins(0, 0, 0, 0)
-        variants_layout.setSpacing(16)
+        variants_layout.setSpacing(_ASSET_VARIANT_SPACING)
         self._asset_variants[key] = []
+        self._asset_variant_preview_labels[key] = []
+        self._asset_variant_sizes[key] = size
+        self._asset_variant_ratios[key] = ratio
         self._asset_variant_scroll_areas[key] = variants_scroll
         self._asset_variant_control_rows[key] = controls_row
         self._asset_variant_buttons[key] = (left_button, right_button)
@@ -818,9 +879,13 @@ class EditAssetsDialog(QDialog):
                 path=original_path,
                 size=size,
                 ratio=ratio,
-                is_current=key not in self._selected_custom_paths_by_key,
+                is_current=(
+                    show_active_selection
+                    and key not in self._selected_custom_paths_by_key
+                ),
                 is_custom=False,
-                show_selection_frame=show_selection_frame,
+                show_selection_frame=draw_variant_frame,
+                is_selectable=show_selection_frame,
                 parent=variants_row,
             ),
             0,
@@ -835,10 +900,13 @@ class EditAssetsDialog(QDialog):
                     size=size,
                     ratio=ratio,
                     is_current=(
-                        self._selected_custom_paths_by_key.get(key) == Path(custom_path)
+                        show_active_selection
+                        and self._selected_custom_paths_by_key.get(key)
+                        == Path(custom_path)
                     ),
                     is_custom=True,
-                    show_selection_frame=show_selection_frame,
+                    show_selection_frame=draw_variant_frame,
+                    is_selectable=show_selection_frame,
                     parent=variants_row,
                 ),
                 0,
@@ -863,6 +931,7 @@ class EditAssetsDialog(QDialog):
         is_current: bool,
         is_custom: bool,
         show_selection_frame: bool,
+        is_selectable: bool,
         parent: QWidget,
     ) -> QWidget:
         preview_width, preview_height = size
@@ -872,27 +941,46 @@ class EditAssetsDialog(QDialog):
             is_custom=is_custom,
             on_select=lambda: self._select_asset_variant(asset_key, variant),
             show_selection_frame=show_selection_frame,
+            is_selectable=is_selectable,
         )
         variant_layout = QVBoxLayout(variant)
-        variant_layout.setContentsMargins(0, 0, 0, 0)
+        variant_layout.setContentsMargins(
+            _ASSET_VARIANT_FRAME_PADDING,
+            _ASSET_VARIANT_FRAME_PADDING,
+            _ASSET_VARIANT_FRAME_PADDING,
+            _ASSET_VARIANT_FRAME_PADDING,
+        )
         variant_layout.setSpacing(0)
 
         preview = self._create_preview_label(size, ratio)
-        preview.setMaximumWidth(preview_width)
         if ratio is None:
             preview.setMinimumSize(preview_width, preview_height)
             preview.setMaximumHeight(preview_height)
+        else:
+            preview.setFixedSize(preview_width, preview.heightForWidth(preview_width))
         self._set_preview_source(preview, path)
         variant_layout.addWidget(preview, 0, Qt.AlignmentFlag.AlignTop)
         self._asset_variants.setdefault(asset_key, []).append(variant)
-        variant.set_selected(is_current)
+        self._asset_variant_preview_labels.setdefault(asset_key, []).append(preview)
+        variant.setFixedSize(
+            preview.sizeHint()
+            + QSize(_ASSET_VARIANT_FRAME_PADDING * 2, _ASSET_VARIANT_FRAME_PADDING * 2)
+        )
+        variant.set_selected(
+            is_current,
+            show_active_frame=self._asset_variant_counts.get(asset_key, 0) > 1,
+        )
         return variant
 
     def _select_asset_variant(
         self, asset_key: str, selected_variant: AssetVariantFrame
     ) -> None:
+        show_active_frame = self._asset_variant_counts.get(asset_key, 0) > 1
         for variant in self._asset_variants.get(asset_key, []):
-            variant.set_selected(variant is selected_variant)
+            variant.set_selected(
+                variant is selected_variant,
+                show_active_frame=show_active_frame,
+            )
         if selected_variant.is_custom:
             self._selected_custom_paths_by_key[asset_key] = Path(
                 selected_variant.asset_path
@@ -991,22 +1079,96 @@ class EditAssetsDialog(QDialog):
             return
 
         scroll_bar = scroll_area.horizontalScrollBar()
-        positions = sorted(variant.x() for variant in variants)
         current = scroll_bar.value()
+        viewport_width = scroll_area.viewport().width()
         tolerance = 8
 
         if direction < 0:
             candidates = [
-                position for position in positions if position < current - tolerance
+                (index, variant)
+                for index, variant in enumerate(variants)
+                if variant.x() < current + tolerance
             ]
-            target = candidates[-1] if candidates else 0
+            if not candidates:
+                target = 0
+            else:
+                index, variant = candidates[-1]
+                if (
+                    self._asset_variant_visible_fraction(
+                        variant,
+                        viewport_start=current,
+                        viewport_width=viewport_width,
+                    )
+                    >= _ASSET_SNAP_VISIBLE_THRESHOLD
+                    and index > 0
+                ):
+                    variant = variants[index - 1]
+                target = variant.x()
         else:
+            viewport_end = current + viewport_width
             candidates = [
-                position for position in positions if position > current + tolerance
+                (index, variant)
+                for index, variant in enumerate(variants)
+                if variant.x() + variant.width() > viewport_end - tolerance
             ]
-            target = candidates[0] if candidates else scroll_bar.maximum()
+            if not candidates:
+                target = scroll_bar.maximum()
+            else:
+                index, variant = candidates[0]
+                if (
+                    self._asset_variant_visible_fraction(
+                        variant,
+                        viewport_start=current,
+                        viewport_width=viewport_width,
+                    )
+                    >= _ASSET_SNAP_VISIBLE_THRESHOLD
+                    and index < len(variants) - 1
+                ):
+                    variant = variants[index + 1]
+                target = variant.x() + variant.width() - viewport_width
 
-        scroll_bar.setValue(max(0, min(target, scroll_bar.maximum())))
+        self._animate_asset_variant_scroll(asset_key, target)
+
+    def _asset_variant_visible_fraction(
+        self,
+        variant: QWidget,
+        *,
+        viewport_start: int,
+        viewport_width: int,
+    ) -> float:
+        variant_start = variant.x()
+        variant_end = variant_start + variant.width()
+        viewport_end = viewport_start + viewport_width
+        visible_width = max(
+            0,
+            min(variant_end, viewport_end) - max(variant_start, viewport_start),
+        )
+        return visible_width / max(1, variant.width())
+
+    def _animate_asset_variant_scroll(self, asset_key: str, target: int) -> None:
+        scroll_area = self._asset_variant_scroll_areas.get(asset_key)
+        if scroll_area is None:
+            return
+
+        scroll_bar = scroll_area.horizontalScrollBar()
+        bounded_target = max(0, min(target, scroll_bar.maximum()))
+        animation = self._asset_scroll_animations.get(asset_key)
+        if (
+            animation is not None
+            and animation.state() != QPropertyAnimation.State.Stopped
+        ):
+            animation.stop()
+
+        if scroll_bar.value() == bounded_target:
+            return
+
+        animation = QPropertyAnimation(scroll_bar, b"value", self)
+        animation.setDuration(260)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.setStartValue(scroll_bar.value())
+        animation.setEndValue(bounded_target)
+        self._asset_scroll_animations[asset_key] = animation
+        animation.start()
 
     def _update_asset_variant_buttons(self, asset_key: str) -> None:
         scroll_area = self._asset_variant_scroll_areas.get(asset_key)
@@ -1029,8 +1191,8 @@ class EditAssetsDialog(QDialog):
             (left_button, Qt.ArrowType.LeftArrow),
             (right_button, Qt.ArrowType.RightArrow),
         ):
-            button.setProperty("assetNavHidden", not has_overflow)
-            button.setArrowType(arrow_type if has_overflow else Qt.ArrowType.NoArrow)
+            button.setProperty("assetNavHidden", False)
+            button.setArrowType(arrow_type)
             button.style().unpolish(button)
             button.style().polish(button)
 
@@ -1040,6 +1202,11 @@ class EditAssetsDialog(QDialog):
     def _refresh_asset_variant_buttons(self) -> None:
         for asset_key in self._asset_variant_scroll_areas:
             self._update_asset_variant_buttons(asset_key)
+
+    def _refresh_asset_variant_rows(self) -> None:
+        for asset_key in self._asset_variant_scroll_areas:
+            self._resize_asset_variants(asset_key)
+            self._finalize_asset_variant_row(asset_key)
 
     def _finalize_asset_variant_row(self, asset_key: str) -> None:
         scroll_area = self._asset_variant_scroll_areas.get(asset_key)
@@ -1053,6 +1220,45 @@ class EditAssetsDialog(QDialog):
             scroll_area.setMaximumHeight(target_height)
 
         self._update_asset_variant_buttons(asset_key)
+
+    def _resize_asset_variants(self, asset_key: str) -> None:
+        scroll_area = self._asset_variant_scroll_areas.get(asset_key)
+        variants = self._asset_variants.get(asset_key, [])
+        previews = self._asset_variant_preview_labels.get(asset_key, [])
+        base_size = self._asset_variant_sizes.get(asset_key)
+        if scroll_area is None or base_size is None:
+            return
+
+        base_width, base_height = base_size
+        ratio = self._asset_variant_ratios.get(asset_key)
+        available_width = max(
+            1,
+            scroll_area.viewport().contentsRect().width() - _ASSET_VARIANT_SPACING,
+        )
+        max_width = min(base_width, _ASSET_PREVIEW_MAX_WIDTHS[asset_key])
+        min_width = min(max_width, _ASSET_PREVIEW_MIN_WIDTHS[asset_key])
+        target_width = max(min_width, min(max_width, available_width))
+
+        if ratio is None:
+            scale = target_width / max(1, base_width)
+            target_height = max(1, int(base_height * scale))
+        else:
+            ratio_width, ratio_height = ratio
+            target_height = max(1, int(target_width * ratio_height / ratio_width))
+
+        target_size = QSize(target_width, target_height)
+        for preview in previews:
+            preview.set_preferred_size(target_size)
+            preview.setFixedSize(target_size)
+
+        for variant in variants:
+            variant.setFixedSize(
+                target_size
+                + QSize(
+                    _ASSET_VARIANT_FRAME_PADDING * 2,
+                    _ASSET_VARIANT_FRAME_PADDING * 2,
+                )
+            )
 
     def _create_preview_label(
         self,
@@ -1068,7 +1274,7 @@ class EditAssetsDialog(QDialog):
                 QSize(preview_width, preview_height),
                 ratio_width,
                 ratio_height,
-                corner_radius=16.0,
+                corner_radius=_ASSET_PREVIEW_CORNER_RADIUS,
             )
             preview.setMinimumWidth(0)
             return preview
@@ -1076,7 +1282,7 @@ class EditAssetsDialog(QDialog):
         preview = PreviewPixmapLabel(
             placeholder,
             QSize(preview_width, preview_height),
-            corner_radius=16.0,
+            corner_radius=_ASSET_PREVIEW_CORNER_RADIUS,
         )
         return preview
 
