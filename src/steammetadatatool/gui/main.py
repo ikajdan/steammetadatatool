@@ -364,18 +364,18 @@ class PreviewPixmapLabel(QLabel):
         if pixmap is None or pixmap.isNull():
             return
 
+        pixmap_rect = QRectF(pixmap.rect())
+        pixmap_rect.moveTo(
+            (self.width() - pixmap.width()) / 2,
+            (self.height() - pixmap.height()) / 2,
+        )
+
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pen = QPen(self.palette().mid().color(), 1)
-        pen.setCosmetic(True)
+        pen = QPen(self.palette().mid().color(), 1.0)
         painter.setPen(pen)
         painter.setBrush(Qt.BrushStyle.NoBrush)
-        border_rect = QRectF(
-            0.5,
-            0.5,
-            max(0.0, self.width() - 1.0),
-            max(0.0, self.height() - 1.0),
-        )
+        border_rect = pixmap_rect.adjusted(0.5, 0.5, -0.5, -0.5)
         if self._corner_radius > 0:
             painter.drawRoundedRect(
                 border_rect,
