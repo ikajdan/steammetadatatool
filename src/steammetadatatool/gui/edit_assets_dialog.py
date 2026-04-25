@@ -25,7 +25,11 @@ from steammetadatatool.gui.edit_metadata_dialog import (
     ElidedLabel,
     _monochrome_icon_pixmap,
 )
-from steammetadatatool.gui.steam_user import cached_icon_path_for_app, steam_grid_dir
+from steammetadatatool.gui.steam_user import (
+    cached_icon_path_for_app,
+    original_icon_path_for_cached_icon,
+    steam_grid_dir,
+)
 
 _CUSTOM_ASSET_DIRS = {
     "capsule_path": "capsule",
@@ -150,7 +154,7 @@ def _apply_icon_asset(appid: str, source: Path) -> None:
     if cached_icon_path is None:
         raise FileNotFoundError(f"No cached Steam icon was found for app {appid}.")
 
-    backup_path = cached_icon_path.with_name(cached_icon_path.name + ".bak")
+    backup_path = original_icon_path_for_cached_icon(cached_icon_path)
     if not backup_path.exists() and cached_icon_path.exists():
         backup_path.write_bytes(cached_icon_path.read_bytes())
 

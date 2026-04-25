@@ -154,6 +154,19 @@ def cached_icon_path_for_app(appid: str | int) -> Path | None:
     return None
 
 
+def original_icon_path_for_cached_icon(cached_icon_path: Path) -> Path:
+    return cached_icon_path.with_name(f"{cached_icon_path.stem}.orig.jpg")
+
+
+def default_icon_path_for_app(appid: str | int) -> Path | None:
+    cached_icon_path = cached_icon_path_for_app(appid)
+    if cached_icon_path is None:
+        return None
+
+    original_icon_path = original_icon_path_for_cached_icon(cached_icon_path)
+    return original_icon_path if original_icon_path.is_file() else cached_icon_path
+
+
 def asset_paths_for_app(appid: int) -> dict[str, str]:
     app_cache_dir = steam_librarycache_dir_for_app(str(appid))
     if app_cache_dir is None:
@@ -165,7 +178,7 @@ def asset_paths_for_app(appid: int) -> dict[str, str]:
             "icon_path": "-",
         }
 
-    cached_icon_path = cached_icon_path_for_app(appid)
+    default_icon_path = default_icon_path_for_app(appid)
     return {
         "header_path": _find_asset_file(
             app_cache_dir, "header.jpg", "library_header.jpg", "header_2x.jpg"
@@ -180,5 +193,5 @@ def asset_paths_for_app(appid: int) -> dict[str, str]:
             app_cache_dir, "library_hero.jpg", "library_hero_2x.jpg"
         ),
         "logo_path": _find_asset_file(app_cache_dir, "logo.png", "logo_2x.png"),
-        "icon_path": str(cached_icon_path) if cached_icon_path is not None else "-",
+        "icon_path": str(default_icon_path) if default_icon_path is not None else "-",
     }
