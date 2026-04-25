@@ -39,7 +39,6 @@ _CUSTOM_ASSET_DIRS = {
     "icon_path": "icon",
 }
 
-_ASSET_CATEGORY_SIDE_PADDING = 0
 _ASSET_NAV_BUTTON_SIZE = 44
 _ASSET_NAV_SCROLLBAR_GAP = 8
 _STEAM_GRID_BASENAME_SUFFIXES = {
@@ -712,12 +711,7 @@ class EditAssetsDialog(QDialog):
         )
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(
-            _ASSET_CATEGORY_SIDE_PADDING,
-            14,
-            _ASSET_CATEGORY_SIDE_PADDING,
-            14,
-        )
+        layout.setContentsMargins(0, 14, 0, 14)
         layout.setSpacing(10)
 
         title_label = QLabel(title, card)
