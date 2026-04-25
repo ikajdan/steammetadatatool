@@ -61,16 +61,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Generic override: PATH=VALUE (PATH uses dots, e.g. common.name=Foo)",
     )
     parser.add_argument(
-        "--changes-file",
-        dest="changes_file",
+        "--metadata-file",
+        dest="metadata_file",
         type=Path,
-        help="Apply per-app overrides from a JSON changes file",
+        help="Apply per-app metadata overrides from a JSON file",
     )
     parser.add_argument(
-        "--write-changes-file",
-        dest="write_changes_file",
+        "--write-metadata-file",
+        dest="write_metadata_file",
         type=Path,
-        help="Write changes to a JSON file",
+        help="Write metadata overrides to a JSON file",
     )
     parser.add_argument(
         "--write-out",
@@ -110,8 +110,8 @@ def main() -> int:
             steam_release_date=args.steam_release_date,
             set_values=args.set_values,
         ),
-        changes_file=args.changes_file,
-        write_changes_file=args.write_changes_file,
+        metadata_file=args.metadata_file,
+        write_metadata_file=args.write_metadata_file,
         write_out=args.write_out,
         dry_run=args.dry_run,
         as_json=args.as_json,

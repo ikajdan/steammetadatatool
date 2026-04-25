@@ -5,19 +5,19 @@ from pathlib import Path
 from .appinfo import find_steam_appinfo_path
 from .models import CliExecutionResult, CliRequest
 from .services import (
-    effective_changes_for_appids,
+    effective_metadata_for_appids,
     has_any_overrides,
-    load_changes_file,
+    load_metadata_file,
     print_appinfo_lines,
-    write_changes_file,
+    write_metadata_file,
     write_modified_appinfo,
 )
 
 
 def execute_cli_request(request: CliRequest) -> CliExecutionResult:
-    file_changes = {}
-    if request.changes_file is not None:
-        file_changes = load_changes_file(request.changes_file)
+    metadata_overrides = {}
+    if request.metadata_file is not None:
+        metadata_overrides = load_metadata_file(request.metadata_file)
 
     path = request.path or find_steam_appinfo_path()
     if path is None or not path.exists():
@@ -25,38 +25,38 @@ def execute_cli_request(request: CliRequest) -> CliExecutionResult:
 
     if request.dry_run and request.write_out:
         raise ValueError("--dry-run cannot be used together with --write-out")
-    if request.dry_run and request.write_changes_file:
-        raise ValueError("--dry-run cannot be used together with --write-changes-file")
+    if request.dry_run and request.write_metadata_file:
+        raise ValueError("--dry-run cannot be used together with --write-metadata-file")
 
-    has_overrides = has_any_overrides(request.overrides) or bool(file_changes)
+    has_overrides = has_any_overrides(request.overrides) or bool(metadata_overrides)
     if has_overrides and not request.dry_run:
-        if not request.appids and not file_changes:
+        if not request.appids and not metadata_overrides:
             raise ValueError(
-                "Write-back requires at least one --appid or a non-empty --changes-file"
+                "Write-back requires at least one --appid or a non-empty --metadata-file"
             )
 
         appids = (
             {int(a) for a in request.appids}
             if request.appids
-            else set(file_changes.keys())
+            else set(metadata_overrides.keys())
         )
         written_path = write_modified_appinfo(
             path=Path(path),
             appids=appids,
             overrides=request.overrides,
-            file_changes=file_changes,
+            metadata_overrides=metadata_overrides,
             write_out=request.write_out,
         )
 
-        if request.write_changes_file is not None:
-            effective_changes = effective_changes_for_appids(
+        if request.write_metadata_file is not None:
+            effective_metadata = effective_metadata_for_appids(
                 appids=appids,
                 overrides=request.overrides,
-                file_changes=file_changes,
+                metadata_overrides=metadata_overrides,
             )
-            write_changes_file(
-                request.write_changes_file,
-                effective_changes,
+            write_metadata_file(
+                request.write_metadata_file,
+                effective_metadata,
                 source_path=Path(path),
             )
 
@@ -66,7 +66,7 @@ def execute_cli_request(request: CliRequest) -> CliExecutionResult:
         path=Path(path),
         appids=request.appids,
         overrides=request.overrides,
-        file_changes=file_changes,
+        metadata_overrides=metadata_overrides,
         as_json=request.as_json,
     )
     return CliExecutionResult(lines=lines, written_path=None)

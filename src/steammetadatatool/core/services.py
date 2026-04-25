@@ -9,19 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from .appinfo import AppInfoFile
-from .models import AppSummary, ChangeMap, OverrideInput, SetValue
+from .models import AppSummary, MetadataMap, OverrideInput, SetValue
 from .writer import rewrite_appinfo
-
-CHANGE_FIELDS = (
-    "name",
-    "sort_as",
-    "aliases",
-    "developer",
-    "publisher",
-    "original_release_date",
-    "steam_release_date",
-)
-
 
 def parse_set_arg(raw: str) -> SetValue:
     if "=" not in raw:
@@ -78,26 +67,26 @@ def list_app_summaries(path: str | Path) -> list[AppSummary]:
     return summaries
 
 
-def load_changes_file(path: Path) -> ChangeMap:
+def load_metadata_file(path: Path) -> MetadataMap:
     try:
         raw_text = path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise ValueError(f"could not read --changes-file: {exc}")
+        raise ValueError(f"could not read --metadata-file: {exc}")
 
     try:
         payload = json.loads(raw_text)
     except json.JSONDecodeError as exc:
-        raise ValueError(f"invalid JSON in --changes-file: {exc}")
+        raise ValueError(f"invalid JSON in --metadata-file: {exc}")
 
-    apps = _normalize_changes_apps_payload(payload)
+    apps = _normalize_metadata_apps_payload(payload)
 
-    out: ChangeMap = {}
+    out: MetadataMap = {}
     for i, app_raw in enumerate(apps):
         where = f"apps[{i}]"
         if not isinstance(app_raw, dict):
             raise ValueError(f"{where} must be an object")
 
-        appid = _parse_changes_appid(app_raw.get("appid"), where=where)
+        appid = _parse_metadata_appid(app_raw.get("appid"), where=where)
 
         if "changes" in app_raw:
             values = _build_override_values_from_change_entries(app_raw, where=where)
@@ -112,8 +101,8 @@ def load_changes_file(path: Path) -> ChangeMap:
     return out
 
 
-def write_changes_file(
-    path: Path, changes: ChangeMap, *, source_path: Path | None = None
+def write_metadata_file(
+    path: Path, metadata: MetadataMap, *, source_path: Path | None = None
 ) -> None:
     existing_entries: list[dict[str, Any]] = []
     if path.exists():
@@ -121,12 +110,12 @@ def write_changes_file(
             raw_text = path.read_text(encoding="utf-8")
             existing_payload = json.loads(raw_text)
         except OSError as exc:
-            raise ValueError(f"could not read --write-changes-file: {exc}")
+            raise ValueError(f"could not read --write-metadata-file: {exc}")
         except json.JSONDecodeError as exc:
-            raise ValueError(f"invalid JSON in --write-changes-file target: {exc}")
-        existing_entries = _normalize_changes_apps_payload(existing_payload)
+            raise ValueError(f"invalid JSON in --write-metadata-file target: {exc}")
+        existing_entries = _normalize_metadata_apps_payload(existing_payload)
 
-    generated_entries = _changes_map_to_apps(changes, source_path=source_path)
+    generated_entries = _metadata_map_to_apps(metadata, source_path=source_path)
     for generated_entry in generated_entries:
         generated_appid = str(generated_entry["appid"])
         merged = False
@@ -169,7 +158,7 @@ def write_changes_file(
             encoding="utf-8",
         )
     except OSError as exc:
-        raise ValueError(f"could not write --write-changes-file: {exc}")
+        raise ValueError(f"could not write --write-metadata-file: {exc}")
 
 
 def print_appinfo_lines(
@@ -177,14 +166,16 @@ def print_appinfo_lines(
     path: Path,
     appids: list[int] | None,
     overrides: OverrideInput,
-    file_changes: ChangeMap,
+    metadata_overrides: MetadataMap,
     as_json: bool,
 ) -> list[str]:
     lines: list[str] = []
     with AppInfoFile.open(path) as appinfo:
         if as_json:
             for app in appinfo.iter_apps(appids=appids):
-                _apply_overrides_for_app(app.data, app.appid, overrides, file_changes)
+                _apply_overrides_for_app(
+                    app.data, app.appid, overrides, metadata_overrides
+                )
                 payload = asdict(app)
                 payload["last_updated"] = app.last_updated.isoformat()
                 payload["sha1"] = app.sha1.hex()
@@ -195,7 +186,7 @@ def print_appinfo_lines(
             return lines
 
         for app in appinfo.iter_apps(appids=appids):
-            _apply_overrides_for_app(app.data, app.appid, overrides, file_changes)
+            _apply_overrides_for_app(app.data, app.appid, overrides, metadata_overrides)
             name = app.name or ""
             lines.append(f"{app.appid}\t{name}")
     return lines
@@ -206,7 +197,7 @@ def write_modified_appinfo(
     path: Path,
     appids: set[int],
     overrides: OverrideInput,
-    file_changes: ChangeMap,
+    metadata_overrides: MetadataMap,
     write_out: Path | None,
 ) -> Path:
     if write_out is not None:
@@ -215,7 +206,7 @@ def write_modified_appinfo(
             out_path=write_out,
             appids_to_modify=appids,
             apply_overrides=lambda kv, appid: _apply_overrides_for_app(
-                kv, appid, overrides, file_changes
+                kv, appid, overrides, metadata_overrides
             ),
         )
         return write_out
@@ -236,7 +227,7 @@ def write_modified_appinfo(
             out_path=tmp_path,
             appids_to_modify=appids,
             apply_overrides=lambda kv, appid: _apply_overrides_for_app(
-                kv, appid, overrides, file_changes
+                kv, appid, overrides, metadata_overrides
             ),
         )
 
@@ -252,17 +243,17 @@ def write_modified_appinfo(
                 pass
 
 
-def effective_changes_for_appids(
-    appids: set[int], overrides: OverrideInput, file_changes: ChangeMap
-) -> ChangeMap:
-    out: ChangeMap = {}
+def effective_metadata_for_appids(
+    appids: set[int], overrides: OverrideInput, metadata_overrides: MetadataMap
+) -> MetadataMap:
+    out: MetadataMap = {}
     cli_values = _override_values(overrides)
 
     for appid in appids:
         values: dict[str, Any] = {}
         values.update(cli_values)
-        if appid in file_changes:
-            values.update(file_changes[appid])
+        if appid in metadata_overrides:
+            values.update(metadata_overrides[appid])
         if values:
             out[appid] = values
 
@@ -333,26 +324,26 @@ def _build_override_values(raw: dict[str, Any], *, where: str) -> dict[str, Any]
     return values
 
 
-def _changes_map_to_apps(
-    changes: ChangeMap, *, source_path: Path | None = None
+def _metadata_map_to_apps(
+    metadata: MetadataMap, *, source_path: Path | None = None
 ) -> list[dict[str, Any]]:
     app_context: dict[int, dict[str, Any]] = {}
     if source_path is not None:
         with AppInfoFile.open(source_path) as appinfo:
-            for app in appinfo.iter_apps(appids=changes.keys()):
+            for app in appinfo.iter_apps(appids=metadata.keys()):
                 app_context[app.appid] = {
-                    "flat": dict(_flatten_metadata_entries_for_changes(app.data)),
+                    "flat": dict(_flatten_metadata_entries_for_metadata_file(app.data)),
                 }
 
     apps: list[dict[str, Any]] = []
-    for appid in sorted(changes.keys()):
+    for appid in sorted(metadata.keys()):
         entry: dict[str, Any] = {
             "appid": str(appid),
             "changes": [],
         }
         context = app_context.get(appid, {})
         for change in _change_entries_from_values(
-            changes[appid],
+            metadata[appid],
             old_values=context.get("flat", {}),
         ):
             entry["changes"].append(change)
@@ -360,7 +351,7 @@ def _changes_map_to_apps(
     return apps
 
 
-def _normalize_changes_apps_payload(payload: Any) -> list[dict[str, Any]]:
+def _normalize_metadata_apps_payload(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
     if isinstance(payload, dict):
@@ -368,10 +359,10 @@ def _normalize_changes_apps_payload(payload: Any) -> list[dict[str, Any]]:
         if isinstance(apps, list):
             return [item for item in apps if isinstance(item, dict)]
         return [payload]
-    raise ValueError("--changes-file must contain a JSON object or array")
+    raise ValueError("--metadata-file must contain a JSON object or array")
 
 
-def _parse_changes_appid(appid_raw: Any, *, where: str) -> int:
+def _parse_metadata_appid(appid_raw: Any, *, where: str) -> int:
     if isinstance(appid_raw, int) and not isinstance(appid_raw, bool) and appid_raw > 0:
         return appid_raw
     if isinstance(appid_raw, str) and appid_raw.isdigit():
@@ -397,8 +388,8 @@ def _parse_scalar(value: Any) -> Any:
     return value
 
 
-def _key_to_internal_change(key: str, new_value: Any) -> tuple[str, Any]:
-    generic_change = (
+def _key_to_internal_override(key: str, new_value: Any) -> tuple[str, Any]:
+    generic_override = (
         "set_values",
         ([part for part in key.split(".") if part], _parse_scalar(new_value)),
     )
@@ -422,7 +413,7 @@ def _key_to_internal_change(key: str, new_value: Any) -> tuple[str, Any]:
             and new_value[7] == "-"
         ):
             return "original_release_date", new_value
-        return generic_change
+        return generic_override
     if key in {
         "appinfo.common.steam_release_date",
         "common.steam_release_date",
@@ -434,10 +425,10 @@ def _key_to_internal_change(key: str, new_value: Any) -> tuple[str, Any]:
             and new_value[7] == "-"
         ):
             return "steam_release_date", new_value
-        return generic_change
+        return generic_override
     if key in {"appinfo.common.aliases", "common.aliases"}:
         return "aliases", parse_aliases(str(new_value))
-    return generic_change
+    return generic_override
 
 
 def _build_override_values_from_change_entries(
@@ -467,7 +458,7 @@ def _build_override_values_from_change_entries(
         if "new_value" not in change:
             raise ValueError(f"{change_where}.new_value is required")
 
-        internal_key, internal_value = _key_to_internal_change(
+        internal_key, internal_value = _key_to_internal_override(
             key.strip(), change["new_value"]
         )
         if internal_key == "set_values":
@@ -480,7 +471,7 @@ def _build_override_values_from_change_entries(
     return values
 
 
-def _format_change_file_value(value: Any) -> str:
+def _format_metadata_file_value(value: Any) -> str:
     if value is None:
         return "null"
     if isinstance(value, bool):
@@ -490,7 +481,7 @@ def _format_change_file_value(value: Any) -> str:
     return str(value)
 
 
-def _flatten_metadata_entries_for_changes(
+def _flatten_metadata_entries_for_metadata_file(
     value: Any,
     prefix: str = "",
 ) -> list[tuple[str, str]]:
@@ -502,7 +493,9 @@ def _flatten_metadata_entries_for_changes(
         for key, nested_value in value.items():
             next_prefix = f"{prefix}.{key}" if prefix else str(key)
             entries.extend(
-                _flatten_metadata_entries_for_changes(nested_value, next_prefix)
+                _flatten_metadata_entries_for_metadata_file(
+                    nested_value, next_prefix
+                )
             )
         return entries
 
@@ -514,11 +507,13 @@ def _flatten_metadata_entries_for_changes(
         for index, nested_value in enumerate(value):
             next_prefix = f"{prefix}[{index}]" if prefix else f"[{index}]"
             entries.extend(
-                _flatten_metadata_entries_for_changes(nested_value, next_prefix)
+                _flatten_metadata_entries_for_metadata_file(
+                    nested_value, next_prefix
+                )
             )
         return entries
 
-    return [(prefix or "(root)", _format_change_file_value(value))]
+    return [(prefix or "(root)", _format_metadata_file_value(value))]
 
 
 def _change_entries_from_values(
@@ -531,7 +526,7 @@ def _change_entries_from_values(
             {
                 "key": key,
                 "old_value": old_values.get(key, ""),
-                "new_value": _format_change_file_value(new_value),
+                "new_value": _format_metadata_file_value(new_value),
             }
         )
 
@@ -601,12 +596,12 @@ def _apply_overrides_for_app(
     app_data: dict[str, Any],
     appid: int,
     overrides: OverrideInput,
-    file_changes: ChangeMap,
+    metadata_overrides: MetadataMap,
 ) -> None:
     _apply_override_values(app_data, _override_values(overrides))
-    file_values = file_changes.get(appid)
-    if file_values:
-        _apply_override_values(app_data, file_values)
+    metadata_values = metadata_overrides.get(appid)
+    if metadata_values:
+        _apply_override_values(app_data, metadata_values)
 
 
 def _apply_override_values(app_data: dict[str, Any], values: dict[str, Any]) -> None:

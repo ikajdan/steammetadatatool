@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Any
 
 SetValue = tuple[list[str], Any]
-ChangeValues = dict[str, Any]
-ChangeMap = dict[int, ChangeValues]
+MetadataValues = dict[str, Any]
+MetadataMap = dict[int, MetadataValues]
 
 
 @dataclass(frozen=True)
@@ -32,8 +32,8 @@ class CliRequest:
     path: Path | None
     appids: list[int] | None
     overrides: OverrideInput = field(default_factory=OverrideInput)
-    changes_file: Path | None = None
-    write_changes_file: Path | None = None
+    metadata_file: Path | None = None
+    write_metadata_file: Path | None = None
     write_out: Path | None = None
     dry_run: bool = False
     as_json: bool = False

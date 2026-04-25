@@ -80,7 +80,7 @@ def _flatten_metadata_entries(
     return [(prefix or "(root)", _format_metadata_value(value))]
 
 
-def _normalize_changes_payload(data: Any) -> list[dict[str, Any]]:
+def _normalize_metadata_payload(data: Any) -> list[dict[str, Any]]:
     if isinstance(data, list):
         return [item for item in data if isinstance(item, dict)]
     if isinstance(data, dict):
@@ -315,11 +315,11 @@ class EditMetadataDialog(QDialog):
         }
 
         try:
-            changes_path = app_data_path("user-changes.json")
+            metadata_path = app_data_path("metadata.json")
             existing_payload: list[dict[str, Any]] = []
-            if changes_path.exists():
-                existing_data = json.loads(changes_path.read_text(encoding="utf-8"))
-                existing_payload = _normalize_changes_payload(existing_data)
+            if metadata_path.exists():
+                existing_data = json.loads(metadata_path.read_text(encoding="utf-8"))
+                existing_payload = _normalize_metadata_payload(existing_data)
 
             merged = False
             for app_entry in existing_payload:
@@ -352,8 +352,8 @@ class EditMetadataDialog(QDialog):
             if not merged:
                 existing_payload.append(payload)
 
-            changes_path.parent.mkdir(parents=True, exist_ok=True)
-            changes_path.write_text(
+            metadata_path.parent.mkdir(parents=True, exist_ok=True)
+            metadata_path.write_text(
                 json.dumps(existing_payload, indent=2, ensure_ascii=True) + "\n",
                 encoding="utf-8",
             )

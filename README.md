@@ -50,7 +50,7 @@ uv run --extra gui steammetadatatool-gui
 
 ## Editing
 
-Apply per-app changes:
+Apply per-app metadata overrides:
 
 ```bash
 uv run steammetadatatool-cli \
@@ -70,28 +70,28 @@ uv run steammetadatatool-cli \
   --dry-run
 ```
 
-Write changes to a JSON file:
+Write metadata overrides to a JSON file:
 
 ```bash
 uv run steammetadatatool-cli \
   --appid 730 \
   --name "Counter-Strike 2 (Modded)" \
-  --write-changes-file user-changes.json
+  --write-metadata-file metadata.json
 ```
 
-Apply changes from a JSON file for a specific app:
+Apply metadata overrides from a JSON file for a specific app:
 
 ```bash
 uv run steammetadatatool-cli \
-  --changes-file user-changes.json \
+  --metadata-file metadata.json \
   --appid 730
 ```
 
-Apply changes from a JSON file for all apps:
+Apply metadata overrides from a JSON file for all apps:
 
 ```bash
 uv run steammetadatatool-cli \
-  --changes-file user-changes.json
+  --metadata-file metadata.json
 ```
 
 Set arbitrary KV path:
