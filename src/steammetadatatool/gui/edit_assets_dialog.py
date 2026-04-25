@@ -21,11 +21,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from steammetadatatool.core.appinfo import steam_base_paths
 from steammetadatatool.gui.edit_metadata_dialog import (
     ElidedLabel,
     _monochrome_icon_pixmap,
 )
+from steammetadatatool.gui.steam_user import cached_icon_path_for_app, steam_grid_dir
 
 _CUSTOM_ASSET_DIRS = {
     "capsule_path": "capsule",
@@ -115,71 +115,13 @@ def _custom_asset_paths_for_app(appid: str | None) -> dict[str, list[str]]:
     return custom_assets
 
 
-def _steam_grid_dir() -> Path:
-    for base in steam_base_paths():
-        userdata_dir = base / "userdata"
-        if not userdata_dir.is_dir():
-            continue
-
-        user_dirs = sorted(
-            path
-            for path in userdata_dir.iterdir()
-            if path.is_dir() and path.name.isdigit()
-        )
-        if user_dirs:
-            return user_dirs[0] / "config" / "grid"
-
-    raise FileNotFoundError(
-        "No Steam userdata directory with a numeric user id was found."
-    )
-
-
-def _steam_librarycache_dir_for_app(appid: str) -> Path | None:
-    for base in steam_base_paths():
-        app_cache_dir = base / "appcache" / "librarycache" / appid
-        if app_cache_dir.is_dir():
-            return app_cache_dir
-    return None
-
-
-def _cached_icon_path_for_app(appid: str) -> Path | None:
-    app_cache_dir = _steam_librarycache_dir_for_app(appid)
-    if app_cache_dir is None:
-        return None
-
-    candidates = sorted(
-        path
-        for path in app_cache_dir.iterdir()
-        if path.is_file()
-        and path.suffix.lower() == ".jpg"
-        and len(path.stem) == 40
-        and all(char in "0123456789abcdef" for char in path.stem)
-    )
-    if candidates:
-        return candidates[0]
-
-    for subdir in sorted(path for path in app_cache_dir.iterdir() if path.is_dir()):
-        candidates = sorted(
-            path
-            for path in subdir.iterdir()
-            if path.is_file()
-            and path.suffix.lower() == ".jpg"
-            and len(path.stem) == 40
-            and all(char in "0123456789abcdef" for char in path.stem)
-        )
-        if candidates:
-            return candidates[0]
-
-    return None
-
-
 def _steam_grid_target(appid: str, asset_key: str, source: Path) -> Path:
     source_suffix = source.suffix.lower()
     if source_suffix not in _STEAM_GRID_EXTENSIONS:
         raise ValueError(f"Unsupported Steam grid asset extension: {source.suffix}")
 
     return (
-        _steam_grid_dir()
+        steam_grid_dir()
         / f"{appid}{_STEAM_GRID_BASENAME_SUFFIXES[asset_key]}{source_suffix}"
     )
 
@@ -204,7 +146,7 @@ def _replace_with_file_copy(
 
 
 def _apply_icon_asset(appid: str, source: Path) -> None:
-    cached_icon_path = _cached_icon_path_for_app(appid)
+    cached_icon_path = cached_icon_path_for_app(appid)
     if cached_icon_path is None:
         raise FileNotFoundError(f"No cached Steam icon was found for app {appid}.")
 
@@ -920,7 +862,7 @@ class EditAssetsDialog(QDialog):
             return
 
         try:
-            grid_dir = _steam_grid_dir()
+            grid_dir = steam_grid_dir()
             for asset_key in _STEAM_GRID_BASENAME_SUFFIXES:
                 source_path = self._selected_custom_paths_by_key.get(asset_key)
                 if source_path is None:
