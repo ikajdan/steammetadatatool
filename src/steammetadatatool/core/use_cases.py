@@ -15,9 +15,13 @@ from .services import (
 
 
 def execute_cli_request(request: CliRequest) -> CliExecutionResult:
+    has_cli_overrides = has_any_overrides(request.overrides)
     metadata_overrides = {}
     if request.metadata_file is not None:
-        metadata_overrides = load_metadata_file(request.metadata_file)
+        if request.metadata_file.exists():
+            metadata_overrides = load_metadata_file(request.metadata_file)
+        elif not has_cli_overrides:
+            metadata_overrides = load_metadata_file(request.metadata_file)
 
     path = request.path or find_steam_appinfo_path()
     if path is None or not path.exists():
@@ -25,10 +29,8 @@ def execute_cli_request(request: CliRequest) -> CliExecutionResult:
 
     if request.dry_run and request.write_out:
         raise ValueError("--dry-run cannot be used together with --write-out")
-    if request.dry_run and request.write_metadata_file:
-        raise ValueError("--dry-run cannot be used together with --write-metadata-file")
 
-    has_overrides = has_any_overrides(request.overrides) or bool(metadata_overrides)
+    has_overrides = has_cli_overrides or bool(metadata_overrides)
     if has_overrides and not request.dry_run:
         if not request.appids and not metadata_overrides:
             raise ValueError(
@@ -48,14 +50,14 @@ def execute_cli_request(request: CliRequest) -> CliExecutionResult:
             write_out=request.write_out,
         )
 
-        if request.write_metadata_file is not None:
+        if request.metadata_file is not None:
             effective_metadata = effective_metadata_for_appids(
                 appids=appids,
                 overrides=request.overrides,
                 metadata_overrides=metadata_overrides,
             )
             write_metadata_file(
-                request.write_metadata_file,
+                request.metadata_file,
                 effective_metadata,
                 source_path=Path(path),
             )

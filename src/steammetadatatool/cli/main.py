@@ -35,42 +35,36 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--appid", type=int, action="append", help="Filter by appid")
 
     parser.add_argument("--name", help="Override common.name")
-    parser.add_argument("--sort-as", dest="sort_as", help="Override common.sortas")
+    parser.add_argument("--sort-as", dest="sort_as", help="Override the sort-as name")
     parser.add_argument(
         "--aliases",
         type=_aliases_arg,
-        help='Override common.aliases (comma-separated or JSON array, e.g. "foo,bar" or ["foo","bar"])',
+        help="Override aliases (comma-separated or JSON array)",
     )
     parser.add_argument("--developer", help="Override extended.developer")
     parser.add_argument("--publisher", help="Override extended.publisher")
     parser.add_argument(
         "--original-release-date",
         dest="original_release_date",
-        help="Override common.original_release_date (YYYY-MM-DD)",
+        help="Override the original release date (YYYY-MM-DD)",
     )
     parser.add_argument(
         "--steam-release-date",
         dest="steam_release_date",
-        help="Override common.steam_release_date (YYYY-MM-DD)",
+        help="Override the release date (YYYY-MM-DD)",
     )
     parser.add_argument(
         "--set",
         dest="set_values",
         action="append",
         type=_set_arg,
-        help="Generic override: PATH=VALUE (PATH uses dots, e.g. common.name=Foo)",
+        help="Generic PATH=VALUE override (dot-separated PATH, VALUE can be JSON or a plain string)",
     )
     parser.add_argument(
         "--metadata-file",
         dest="metadata_file",
         type=Path,
-        help="Apply per-app metadata overrides from a JSON file",
-    )
-    parser.add_argument(
-        "--write-metadata-file",
-        dest="write_metadata_file",
-        type=Path,
-        help="Write metadata overrides to a JSON file",
+        help="Path to the JSON file containing metadata overrides",
     )
     parser.add_argument(
         "--write-out",
@@ -88,7 +82,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--json",
         dest="as_json",
         action="store_true",
-        help="Print full record(s) as JSON (otherwise prints a compact list)",
+        help="Print the output as JSON instead of plain text",
     )
     return parser
 
@@ -111,7 +105,6 @@ def main() -> int:
             set_values=args.set_values,
         ),
         metadata_file=args.metadata_file,
-        write_metadata_file=args.write_metadata_file,
         write_out=args.write_out,
         dry_run=args.dry_run,
         as_json=args.as_json,

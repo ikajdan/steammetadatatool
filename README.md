@@ -76,7 +76,7 @@ Write metadata overrides to a JSON file:
 uv run steammetadatatool-cli \
   --appid 730 \
   --name "Counter-Strike 2 (Modded)" \
-  --write-metadata-file metadata.json
+  --metadata-file metadata.json
 ```
 
 Apply metadata overrides from a JSON file for a specific app:

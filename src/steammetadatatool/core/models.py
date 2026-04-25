@@ -33,7 +33,6 @@ class CliRequest:
     appids: list[int] | None
     overrides: OverrideInput = field(default_factory=OverrideInput)
     metadata_file: Path | None = None
-    write_metadata_file: Path | None = None
     write_out: Path | None = None
     dry_run: bool = False
     as_json: bool = False

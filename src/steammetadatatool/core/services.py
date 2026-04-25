@@ -110,9 +110,9 @@ def write_metadata_file(
             raw_text = path.read_text(encoding="utf-8")
             existing_payload = json.loads(raw_text)
         except OSError as exc:
-            raise ValueError(f"could not read --write-metadata-file: {exc}")
+            raise ValueError(f"could not read --metadata-file: {exc}")
         except json.JSONDecodeError as exc:
-            raise ValueError(f"invalid JSON in --write-metadata-file target: {exc}")
+            raise ValueError(f"invalid JSON in --metadata-file target: {exc}")
         existing_entries = _normalize_metadata_apps_payload(existing_payload)
 
     generated_entries = _metadata_map_to_apps(metadata, source_path=source_path)
@@ -158,7 +158,7 @@ def write_metadata_file(
             encoding="utf-8",
         )
     except OSError as exc:
-        raise ValueError(f"could not write --write-metadata-file: {exc}")
+        raise ValueError(f"could not write --metadata-file: {exc}")
 
 
 def print_appinfo_lines(
