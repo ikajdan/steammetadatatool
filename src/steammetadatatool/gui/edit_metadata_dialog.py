@@ -136,6 +136,7 @@ class EditMetadataDialog(QDialog):
         }
         self._appid = appid
         self._original_entries = dict(entries)
+        self._saved_entries = dict(entries)
         self._search_text = ""
         action_icon_color = self.palette().placeholderText().color()
         readonly_text_color = self.palette().placeholderText().color()
@@ -224,6 +225,7 @@ class EditMetadataDialog(QDialog):
 
         metadata_table.cellDoubleClicked.connect(start_value_edit)
         metadata_table.cellActivated.connect(start_value_edit)
+        metadata_table.itemChanged.connect(self._on_metadata_item_changed)
         metadata_table.setSortingEnabled(True)
         metadata_table.sortItems(0, Qt.SortOrder.AscendingOrder)
         dialog_layout.addWidget(metadata_table)
@@ -291,15 +293,9 @@ class EditMetadataDialog(QDialog):
 
     def _save_changes(self) -> None:
         changes: list[dict[str, str]] = []
-        for row in range(self._metadata_table.rowCount()):
-            key_item = self._metadata_table.item(row, 0)
-            value_item = self._metadata_table.item(row, 1)
-            if key_item is None or value_item is None:
-                continue
-
-            key = key_item.text()
+        current_entries = self._current_entries()
+        for key, new_value in current_entries.items():
             old_value = self._original_entries.get(key, "")
-            new_value = value_item.text()
             if new_value != old_value:
                 changes.append(
                     {
@@ -331,6 +327,14 @@ class EditMetadataDialog(QDialog):
                     existing_changes = []
                     app_entry["changes"] = existing_changes
 
+                changed_keys = {change["key"] for change in changes}
+                existing_changes[:] = [
+                    item
+                    for item in existing_changes
+                    if not isinstance(item, dict)
+                    or str(item.get("key")) not in self._original_entries
+                    or str(item.get("key")) in changed_keys
+                ]
                 existing_changes_by_key = {
                     str(item.get("key")): item
                     for item in existing_changes
@@ -349,8 +353,17 @@ class EditMetadataDialog(QDialog):
                 merged = True
                 break
 
-            if not merged:
+            if not merged and changes:
                 existing_payload.append(payload)
+
+            existing_payload = [
+                app_entry
+                for app_entry in existing_payload
+                if str(app_entry.get("appid")) != str(self._appid)
+                or not isinstance(app_entry.get("changes"), list)
+                or app_entry["changes"]
+                or set(app_entry) - {"appid", "changes"}
+            ]
 
             metadata_path.parent.mkdir(parents=True, exist_ok=True)
             metadata_path.write_text(
@@ -361,7 +374,48 @@ class EditMetadataDialog(QDialog):
             QMessageBox.critical(self, "Edit Metadata", str(exc))
             return
 
-        self.accept()
+        self._saved_entries = current_entries
+        self._refresh_unsaved_change_styles()
+
+    def _current_entries(self) -> dict[str, str]:
+        entries: dict[str, str] = {}
+        for row in range(self._metadata_table.rowCount()):
+            key_item = self._metadata_table.item(row, 0)
+            value_item = self._metadata_table.item(row, 1)
+            if key_item is None or value_item is None:
+                continue
+            entries[key_item.text()] = value_item.text()
+        return entries
+
+    def _on_metadata_item_changed(self, item: QTableWidgetItem) -> None:
+        if item.column() != 1:
+            return
+
+        key_item = self._metadata_table.item(item.row(), 0)
+        if key_item is None:
+            return
+
+        self._set_unsaved_change_style(item, key_item.text())
+
+    def _refresh_unsaved_change_styles(self) -> None:
+        for row in range(self._metadata_table.rowCount()):
+            key_item = self._metadata_table.item(row, 0)
+            value_item = self._metadata_table.item(row, 1)
+            if key_item is None or value_item is None:
+                continue
+            self._set_unsaved_change_style(value_item, key_item.text())
+
+    def _set_unsaved_change_style(self, item: QTableWidgetItem, key: str) -> None:
+        font = item.font()
+        value = item.text()
+        is_unsaved = value != self._saved_entries.get(key, "")
+        is_saved_edit = not is_unsaved and value != self._original_entries.get(key, "")
+        if font.italic() == is_unsaved and font.bold() == is_saved_edit:
+            return
+
+        font.setItalic(is_unsaved)
+        font.setBold(is_saved_edit)
+        item.setFont(font)
 
     def _apply_table_filter(self, text: str) -> None:
         self._search_text = text.strip().casefold()
