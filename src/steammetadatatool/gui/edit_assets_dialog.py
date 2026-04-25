@@ -921,9 +921,16 @@ class EditAssetsDialog(QDialog):
             QMessageBox.warning(self, "Edit Assets", "No app id is available.")
             return
 
+        unapplied_asset_keys = self._unapplied_asset_keys()
+        if not unapplied_asset_keys:
+            return
+
         try:
             grid_dir = steam_grid_dir()
             for asset_key in _STEAM_GRID_BASENAME_SUFFIXES:
+                if asset_key not in unapplied_asset_keys:
+                    continue
+
                 if asset_key in self._default_selected_asset_keys:
                     _remove_grid_asset_files(grid_dir, self._appid, asset_key)
                     continue
@@ -938,26 +945,28 @@ class EditAssetsDialog(QDialog):
                     cleanup_grid_extensions=True,
                 )
 
-            hero_path = self._selected_custom_paths_by_key.get("hero_path")
-            if hero_path is not None:
-                preset_path = (
-                    hero_path.parent.parent / "preset" / f"{hero_path.stem}.json"
-                )
-                if preset_path.is_file():
-                    _replace_with_file_copy(
-                        preset_path,
-                        grid_dir / f"{self._appid}.json",
+            if "hero_path" in unapplied_asset_keys:
+                hero_path = self._selected_custom_paths_by_key.get("hero_path")
+                if hero_path is not None:
+                    preset_path = (
+                        hero_path.parent.parent / "preset" / f"{hero_path.stem}.json"
                     )
-            elif "hero_path" in self._default_selected_asset_keys:
-                preset_target = grid_dir / f"{self._appid}.json"
-                if preset_target.exists() or preset_target.is_symlink():
-                    preset_target.unlink()
+                    if preset_path.is_file():
+                        _replace_with_file_copy(
+                            preset_path,
+                            grid_dir / f"{self._appid}.json",
+                        )
+                elif "hero_path" in self._default_selected_asset_keys:
+                    preset_target = grid_dir / f"{self._appid}.json"
+                    if preset_target.exists() or preset_target.is_symlink():
+                        preset_target.unlink()
 
-            icon_path = self._selected_custom_paths_by_key.get("icon_path")
-            if icon_path is not None:
-                _apply_icon_asset(self._appid, icon_path)
-            elif "icon_path" in self._default_selected_asset_keys:
-                _restore_icon_asset(self._appid)
+            if "icon_path" in unapplied_asset_keys:
+                icon_path = self._selected_custom_paths_by_key.get("icon_path")
+                if icon_path is not None:
+                    _apply_icon_asset(self._appid, icon_path)
+                elif "icon_path" in self._default_selected_asset_keys:
+                    _restore_icon_asset(self._appid)
 
             _write_selected_assets_manifest(
                 self._appid,
