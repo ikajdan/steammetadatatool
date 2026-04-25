@@ -521,6 +521,7 @@ class EditAssetsDialog(QDialog):
         self._asset_variant_scroll_areas: dict[str, QScrollArea] = {}
         self._asset_variant_control_rows: dict[str, QWidget] = {}
         self._asset_variant_buttons: dict[str, tuple[QToolButton, QToolButton]] = {}
+        self._asset_unapplied_labels: dict[str, QLabel] = {}
         self._initial_asset_key = initial_asset_key
         self._did_initial_asset_scroll = False
         self._initial_asset_scroll_attempts = 0
@@ -540,6 +541,9 @@ class EditAssetsDialog(QDialog):
             )
             if matching_path is not None:
                 self._selected_custom_paths_by_key[key] = matching_path
+        self._initial_selected_custom_paths_by_key = dict(
+            self._selected_custom_paths_by_key
+        )
 
         action_icon_color = self.palette().placeholderText().color()
 
@@ -621,20 +625,20 @@ class EditAssetsDialog(QDialog):
             "dialog-ok-apply",
             self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton),
         )
-        apply_button = QPushButton(
+        self._apply_button = QPushButton(
             QIcon(_monochrome_icon_pixmap(apply_icon, 24, action_icon_color)),
             "Apply",
             dialog_actions,
         )
-        apply_button.setSizePolicy(
+        self._apply_button.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        apply_button.setMinimumHeight(40)
-        apply_button.setMaximumWidth(360)
-        apply_button.setIconSize(QSize(24, 24))
-        apply_button.clicked.connect(self._apply_selected_assets)
-        dialog_actions_layout.addWidget(apply_button)
+        self._apply_button.setMinimumHeight(40)
+        self._apply_button.setMaximumWidth(360)
+        self._apply_button.setIconSize(QSize(24, 24))
+        self._apply_button.clicked.connect(self._apply_selected_assets)
+        dialog_actions_layout.addWidget(self._apply_button)
 
         close_icon = QIcon.fromTheme(
             "dialog-close",
@@ -659,6 +663,7 @@ class EditAssetsDialog(QDialog):
         dialog_actions_layout.setStretch(1, 1)
         dialog_actions_layout.setStretch(2, 1)
         dialog_layout.addWidget(dialog_actions)
+        self._refresh_unapplied_state()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -733,9 +738,29 @@ class EditAssetsDialog(QDialog):
         layout.setContentsMargins(0, 14, 0, 14)
         layout.setSpacing(10)
 
-        title_label = QLabel(title, card)
+        title_row = QWidget(card)
+        title_row_layout = QHBoxLayout(title_row)
+        title_row_layout.setContentsMargins(0, 0, 0, 0)
+        title_row_layout.setSpacing(8)
+
+        title_label = QLabel(title, title_row)
         title_label.setStyleSheet("font-weight: 600;")
-        layout.addWidget(title_label)
+        title_row_layout.addWidget(title_label)
+
+        unapplied_label = QLabel("Unapplied", title_row)
+        unapplied_label.setStyleSheet(
+            "font-size: 11px;"
+            " font-weight: 600;"
+            " padding: 2px 6px;"
+            " border-radius: 8px;"
+            f" color: {self.palette().highlightedText().color().name()};"
+            f" background: {self.palette().highlight().color().name()};"
+        )
+        unapplied_label.setVisible(False)
+        self._asset_unapplied_labels[key] = unapplied_label
+        title_row_layout.addWidget(unapplied_label)
+        title_row_layout.addStretch(1)
+        layout.addWidget(title_row)
         show_selection_frame = bool(custom_paths)
 
         controls_row = QWidget(card)
@@ -874,6 +899,22 @@ class EditAssetsDialog(QDialog):
         else:
             self._selected_custom_paths_by_key.pop(asset_key, None)
             self._default_selected_asset_keys.add(asset_key)
+        self._refresh_unapplied_state()
+
+    def _unapplied_asset_keys(self) -> set[str]:
+        unapplied: set[str] = set()
+        for asset_key in _CUSTOM_ASSET_DIRS:
+            initial_path = self._initial_selected_custom_paths_by_key.get(asset_key)
+            selected_path = self._selected_custom_paths_by_key.get(asset_key)
+            if selected_path != initial_path:
+                unapplied.add(asset_key)
+        return unapplied
+
+    def _refresh_unapplied_state(self) -> None:
+        unapplied_asset_keys = self._unapplied_asset_keys()
+        for asset_key, label in self._asset_unapplied_labels.items():
+            label.setVisible(asset_key in unapplied_asset_keys)
+        self._apply_button.setEnabled(bool(unapplied_asset_keys))
 
     def _apply_selected_assets(self) -> None:
         if self._appid is None:
@@ -926,7 +967,11 @@ class EditAssetsDialog(QDialog):
             QMessageBox.critical(self, "Edit Assets", str(exc))
             return
 
-        self.accept()
+        self._initial_selected_custom_paths_by_key = dict(
+            self._selected_custom_paths_by_key
+        )
+        self._default_selected_asset_keys.clear()
+        self._refresh_unapplied_state()
 
     def _scroll_asset_variants(self, asset_key: str, direction: int) -> None:
         scroll_area = self._asset_variant_scroll_areas.get(asset_key)
