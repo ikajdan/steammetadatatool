@@ -140,7 +140,6 @@ class EditMetadataDialog(QDialog):
         self._search_text = ""
         action_icon_color = self.palette().placeholderText().color()
         readonly_text_color = self.palette().placeholderText().color()
-        readonly_background_color = self.palette().alternateBase().color()
 
         dialog_layout = QVBoxLayout(self)
         dialog_layout.setContentsMargins(16, 16, 16, 16)
@@ -209,7 +208,6 @@ class EditMetadataDialog(QDialog):
             if key in readonly_keys:
                 value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
                 value_item.setForeground(readonly_text_color)
-                value_item.setBackground(readonly_background_color)
             metadata_table.setItem(row, 0, key_item)
             metadata_table.setItem(row, 1, value_item)
 
