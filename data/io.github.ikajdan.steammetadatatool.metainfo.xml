@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.ikajdan.steammetadatatool</id>
+  <name>SteamMetadataTool</name>
+  <summary>A tool for managing Steam client game metadata and library artwork</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.ikajdan">
+    <name>Ignacy Kajdan</name>
+  </developer>
+  <launchable type="desktop-id">io.github.ikajdan.steammetadatatool.desktop</launchable>
+  <description>
+    <p>
+      SteamMetadataTool is a utility for browsing, exporting, and customizing
+      Steam client game metadata and library artwork.
+    </p>
+  </description>
+</component>

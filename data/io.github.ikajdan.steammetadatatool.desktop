@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=SteamMetadataTool
+GenericName=SteamMetadataTool
+Comment=A tool for managing Steam client game metadata and library artwork
+Icon=steammetadatatool
+Exec=steammetadatatool-gui
+Terminal=false
+Type=Application
+Categories=Utility;
