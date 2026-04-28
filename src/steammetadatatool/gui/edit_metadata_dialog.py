@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 from PySide6.QtCore import QSize, Qt
@@ -122,6 +123,7 @@ class EditMetadataDialog(QDialog):
         *,
         appid: str | None = None,
         app_name: str | None = None,
+        on_save: Callable[[dict[str, str]], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -138,8 +140,10 @@ class EditMetadataDialog(QDialog):
             "appinfo.common.gameid",
         }
         self._appid = appid
+        self._on_save = on_save
         self._original_entries = dict(entries)
-        self._saved_entries = dict(entries)
+        self._saved_change_keys: set[str] = set()
+        self._saved_entries = self._entries_with_saved_changes(dict(entries))
         self._search_text = ""
         action_icon_color = self.palette().placeholderText().color()
         readonly_text_color = self.palette().placeholderText().color()
@@ -231,6 +235,7 @@ class EditMetadataDialog(QDialog):
         metadata_table.sortItems(0, Qt.SortOrder.AscendingOrder)
         dialog_layout.addWidget(metadata_table)
         self._apply_table_filter("")
+        self._refresh_unsaved_change_styles()
 
         dialog_actions = QWidget(self)
         dialog_actions_layout = QHBoxLayout(dialog_actions)
@@ -238,24 +243,24 @@ class EditMetadataDialog(QDialog):
         dialog_actions_layout.setSpacing(12)
         dialog_actions_layout.addStretch(1)
 
-        save_icon = QIcon.fromTheme(
-            "document-save",
+        apply_icon = QIcon.fromTheme(
+            "dialog-ok-apply",
             self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton),
         )
-        save_button = QPushButton(
-            QIcon(_monochrome_icon_pixmap(save_icon, 24, action_icon_color)),
-            "Save",
+        apply_button = QPushButton(
+            QIcon(_monochrome_icon_pixmap(apply_icon, 24, action_icon_color)),
+            "Apply",
             dialog_actions,
         )
-        save_button.setSizePolicy(
+        apply_button.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
         )
-        save_button.setMinimumHeight(40)
-        save_button.setMaximumWidth(360)
-        save_button.setIconSize(QSize(24, 24))
-        save_button.clicked.connect(self._save_changes)
-        dialog_actions_layout.addWidget(save_button)
+        apply_button.setMinimumHeight(40)
+        apply_button.setMaximumWidth(360)
+        apply_button.setIconSize(QSize(24, 24))
+        apply_button.clicked.connect(self._save_changes)
+        dialog_actions_layout.addWidget(apply_button)
 
         cancel_icon = QIcon.fromTheme(
             "dialog-cancel",
@@ -263,7 +268,7 @@ class EditMetadataDialog(QDialog):
         )
         cancel_button = QPushButton(
             QIcon(_monochrome_icon_pixmap(cancel_icon, 24, action_icon_color)),
-            "Cancel",
+            "Close",
             dialog_actions,
         )
         cancel_button.setSizePolicy(
@@ -280,6 +285,41 @@ class EditMetadataDialog(QDialog):
         dialog_actions_layout.setStretch(1, 1)
         dialog_actions_layout.setStretch(2, 1)
         dialog_layout.addWidget(dialog_actions)
+
+    def _entries_with_saved_changes(self, entries: dict[str, str]) -> dict[str, str]:
+        if self._appid is None:
+            return entries
+
+        metadata_path = app_data_path("metadata.json")
+        if not metadata_path.exists():
+            return entries
+
+        try:
+            existing_data = json.loads(metadata_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return entries
+
+        saved_entries = dict(entries)
+        for app_entry in _normalize_metadata_payload(existing_data):
+            if str(app_entry.get("appid")) != str(self._appid):
+                continue
+
+            changes = app_entry.get("changes")
+            if not isinstance(changes, list):
+                continue
+
+            for change in changes:
+                if not isinstance(change, dict):
+                    continue
+
+                key = change.get("key")
+                if not isinstance(key, str) or "new_value" not in change:
+                    continue
+
+                self._saved_change_keys.add(key)
+                saved_entries[key] = _format_metadata_value(change["new_value"])
+
+        return saved_entries
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -371,10 +411,16 @@ class EditMetadataDialog(QDialog):
                 json.dumps(existing_payload, indent=2, ensure_ascii=True) + "\n",
                 encoding="utf-8",
             )
+            if self._on_save is not None:
+                self._on_save(current_entries)
         except (OSError, json.JSONDecodeError) as exc:
             QMessageBox.critical(self, "Edit Metadata", str(exc))
             return
+        except Exception as exc:
+            QMessageBox.critical(self, "Edit Metadata", str(exc))
+            return
 
+        self._saved_change_keys = {change["key"] for change in changes}
         self._saved_entries = current_entries
         self._refresh_unsaved_change_styles()
 
@@ -410,7 +456,10 @@ class EditMetadataDialog(QDialog):
         font = item.font()
         value = item.text()
         is_unsaved = value != self._saved_entries.get(key, "")
-        is_saved_edit = not is_unsaved and value != self._original_entries.get(key, "")
+        is_saved_edit = not is_unsaved and (
+            key in self._saved_change_keys
+            or value != self._original_entries.get(key, "")
+        )
         if font.italic() == is_unsaved and font.bold() == is_saved_edit:
             return
 

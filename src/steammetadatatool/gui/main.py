@@ -45,6 +45,9 @@ from steammetadatatool.core.appinfo import (
     find_steam_appinfo_path,
 )
 from steammetadatatool.core.keyvalues1 import kv_deep_get
+from steammetadatatool.core.models import OverrideInput
+from steammetadatatool.core.services import load_metadata_file, write_modified_appinfo
+from steammetadatatool.gui.app_data import app_data_path
 from steammetadatatool.gui.app_theme import apply_theme
 from steammetadatatool.gui.edit_assets_dialog import EditAssetsDialog
 from steammetadatatool.gui.edit_metadata_dialog import EditMetadataDialog
@@ -523,6 +526,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(980, 520)
 
         self._details_by_appid: dict[int, dict[str, Any]] = {}
+        self._appinfo_path: Path | None = None
         self._detail_labels: dict[str, QLabel] = {}
         self._asset_image_labels: dict[str, QLabel] = {}
         self._asset_boxes: dict[str, QWidget] = {}
@@ -926,9 +930,30 @@ class MainWindow(QMainWindow):
             raw_metadata,
             appid=details.get("appid") if details is not None else None,
             app_name=details.get("name") if details is not None else None,
+            on_save=lambda _entries, selected_appid=appid: (
+                self._apply_saved_metadata_changes(selected_appid)
+            ),
             parent=self,
         )
         dialog.exec()
+
+    def _apply_saved_metadata_changes(self, appid: int) -> None:
+        if self._appinfo_path is None:
+            raise ValueError("No appinfo.vdf path is loaded.")
+
+        metadata_path = app_data_path("metadata.json")
+        metadata_overrides = load_metadata_file(metadata_path)
+        if appid not in metadata_overrides:
+            return
+
+        write_modified_appinfo(
+            path=self._appinfo_path,
+            appids={appid},
+            overrides=OverrideInput(),
+            metadata_overrides={appid: metadata_overrides[appid]},
+            write_out=None,
+        )
+        self._refresh_app_from_disk(appid)
 
     def _open_edit_assets_dialog(self, initial_asset_key: str | None = None) -> None:
         appid = self._current_selected_appid()
@@ -988,33 +1013,12 @@ class MainWindow(QMainWindow):
                     rows.append((app.appid, name))
                     filter_matches_by_appid[app.appid] = _matches_game_filter(app.data)
 
-                    asset_paths = asset_paths_for_app(app.appid)
-
-                    details_by_appid[app.appid] = {
-                        "_raw_metadata": app.data,
-                        "appid": str(app.appid),
-                        "name": name or "–",
-                        "sort_as": str(_sort_as_value(app.data) or "–"),
-                        "aliases": _format_aliases(_aliases_value(app.data)),
-                        "developer": str(_extended_value(app.data, "developer") or "–"),
-                        "publisher": str(_extended_value(app.data, "publisher") or "–"),
-                        "original_release_date": _format_release_date(
-                            _common_value(app.data, "original_release_date")
-                        ),
-                        "steam_release_date": _format_release_date(
-                            _common_value(app.data, "steam_release_date")
-                        ),
-                        "header_path": asset_paths["header_path"],
-                        "capsule_path": asset_paths["capsule_path"],
-                        "hero_path": asset_paths["hero_path"],
-                        "logo_path": asset_paths["logo_path"],
-                        "logo_position": _library_logo_position(app.data),
-                        "icon_path": asset_paths["icon_path"],
-                    }
+                    details_by_appid[app.appid] = self._details_for_app(app)
         except Exception as exc:
             QMessageBox.critical(self, "SteamMetadataTool", str(exc))
             return
 
+        self._appinfo_path = path_obj
         self._details_by_appid = details_by_appid
         self._filter_matches_by_appid = filter_matches_by_appid
 
@@ -1032,6 +1036,69 @@ class MainWindow(QMainWindow):
         self._table.setSortingEnabled(True)
         self._table.sortItems(0, Qt.SortOrder.AscendingOrder)
         self._apply_table_filter(self._search_input.text())
+
+    def _refresh_app_from_disk(self, appid: int) -> None:
+        if self._appinfo_path is None:
+            raise ValueError("No appinfo.vdf path is loaded.")
+
+        with AppInfoFile.open(self._appinfo_path) as appinfo:
+            for app in appinfo.iter_apps(appids=[appid]):
+                details = self._details_for_app(app)
+                self._details_by_appid[appid] = details
+                self._filter_matches_by_appid[appid] = _matches_game_filter(app.data)
+                self._update_table_row_for_app(appid, str(details.get("name", "–")))
+                if self._current_selected_appid() == appid:
+                    self._set_details(details)
+                self._apply_table_filter(self._search_input.text())
+                return
+
+        raise ValueError(f"Could not reload app {appid} from appinfo.vdf.")
+
+    def _details_for_app(self, app: Any) -> dict[str, Any]:
+        name = (app.name or "").strip()
+        asset_paths = asset_paths_for_app(app.appid)
+        return {
+            "_raw_metadata": app.data,
+            "appid": str(app.appid),
+            "name": name or "–",
+            "sort_as": str(_sort_as_value(app.data) or "–"),
+            "aliases": _format_aliases(_aliases_value(app.data)),
+            "developer": str(_extended_value(app.data, "developer") or "–"),
+            "publisher": str(_extended_value(app.data, "publisher") or "–"),
+            "original_release_date": _format_release_date(
+                _common_value(app.data, "original_release_date")
+            ),
+            "steam_release_date": _format_release_date(
+                _common_value(app.data, "steam_release_date")
+            ),
+            "header_path": asset_paths["header_path"],
+            "capsule_path": asset_paths["capsule_path"],
+            "hero_path": asset_paths["hero_path"],
+            "logo_path": asset_paths["logo_path"],
+            "logo_position": _library_logo_position(app.data),
+            "icon_path": asset_paths["icon_path"],
+        }
+
+    def _update_table_row_for_app(self, appid: int, name: str) -> None:
+        for row in range(self._table.rowCount()):
+            appid_item = self._table.item(row, 0)
+            if appid_item is None:
+                continue
+
+            try:
+                row_appid = int(appid_item.text())
+            except ValueError:
+                continue
+
+            if row_appid != appid:
+                continue
+
+            name_item = self._table.item(row, 1)
+            if name_item is None:
+                name_item = QTableWidgetItem()
+                self._table.setItem(row, 1, name_item)
+            name_item.setText(name)
+            return
 
     def _current_selected_appid(self) -> int | None:
         selected = self._table.selectedItems()
