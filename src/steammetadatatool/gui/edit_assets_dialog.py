@@ -640,8 +640,8 @@ class EditAssetsDialog(QDialog):
         action_icon_color = self.palette().placeholderText().color()
 
         dialog_layout = QVBoxLayout(self)
-        dialog_layout.setContentsMargins(16, 16, 16, 16)
-        dialog_layout.setSpacing(12)
+        dialog_layout.setContentsMargins(10, 11, 10, 10)
+        dialog_layout.setSpacing(11)
 
         header_row = QWidget(self)
         header_row_layout = QHBoxLayout(header_row)

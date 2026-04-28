@@ -634,13 +634,12 @@ class MainWindow(QMainWindow):
         search_row_layout.addWidget(self._search_input, 1)
         search_row_layout.addWidget(self._filter_button, 0)
 
-        list_layout.addWidget(search_row)
         list_layout.addWidget(self._table)
 
         details_widget = QWidget()
         details_widget.setMinimumWidth(500)
         details_outer_layout = QVBoxLayout(details_widget)
-        details_outer_layout.setContentsMargins(18, 18, 18, 18)
+        details_outer_layout.setContentsMargins(8, 8, 8, 8)
         details_outer_layout.setSpacing(10)
         details_outer_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
@@ -833,10 +832,15 @@ class MainWindow(QMainWindow):
         details_outer_layout.addStretch(1)
 
         root = QWidget()
-        layout = QHBoxLayout(root)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(14)
-        layout.addWidget(list_widget, 5)
+        root_layout = QVBoxLayout(root)
+        root_layout.setContentsMargins(10, 11, 10, 10)
+        root_layout.setSpacing(11)
+        root_layout.addWidget(search_row, 0)
+
+        content_layout = QHBoxLayout()
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(8)
+        content_layout.addWidget(list_widget, 5)
 
         details_scroll = QScrollArea()
         details_scroll.setWidgetResizable(True)
@@ -852,12 +856,12 @@ class MainWindow(QMainWindow):
         details_panel = QWidget()
         details_panel_layout = QVBoxLayout(details_panel)
         details_panel_layout.setContentsMargins(0, 0, 0, 0)
-        details_panel_layout.setSpacing(12)
+        details_panel_layout.setSpacing(8)
         details_panel_layout.addWidget(details_scroll, 1)
 
         actions_container = QWidget()
         actions_layout = QHBoxLayout(actions_container)
-        actions_layout.setContentsMargins(18, 0, 18, 18)
+        actions_layout.setContentsMargins(8, 0, 8, 8)
         actions_layout.setSpacing(12)
 
         metadata_icon = QIcon.fromTheme(
@@ -875,7 +879,6 @@ class MainWindow(QMainWindow):
             QSizePolicy.Policy.Fixed,
         )
         edit_metadata_button.setMinimumHeight(40)
-        edit_metadata_button.setMaximumWidth(680)
         edit_metadata_button.setIconSize(QSize(24, 24))
         edit_metadata_button.clicked.connect(self._open_edit_metadata_dialog)
         actions_layout.addWidget(edit_metadata_button)
@@ -893,14 +896,14 @@ class MainWindow(QMainWindow):
             QSizePolicy.Policy.Fixed,
         )
         edit_assets_button.setMinimumHeight(40)
-        edit_assets_button.setMaximumWidth(680)
         edit_assets_button.setIconSize(QSize(24, 24))
         edit_assets_button.clicked.connect(self._open_edit_assets_dialog)
         actions_layout.addWidget(edit_assets_button)
 
         details_panel_layout.addWidget(actions_container, 0)
 
-        layout.addWidget(details_panel, 4)
+        content_layout.addWidget(details_panel, 4)
+        root_layout.addLayout(content_layout, 1)
         self.setCentralWidget(root)
 
         if initial_path:
