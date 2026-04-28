@@ -1385,6 +1385,9 @@ def main() -> int:
             initial_path = str(detected_path)
 
     app = QApplication([])
+    app.setApplicationName("SteamMetadataTool")
+    app.setApplicationDisplayName("SteamMetadataTool")
+    app.setDesktopFileName("io.github.ikajdan.steammetadatatool")
     apply_theme(app)
     window = MainWindow(initial_path)
     window.show()
