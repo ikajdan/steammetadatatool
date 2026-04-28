@@ -34,6 +34,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
 
 <p align="center">
   <a href="#top">Overview</a> •
+  <a href="#screenshots">Screenshots</a> •
   <a href="#installation">Installation</a> •
   <a href="#usage">Usage</a> •
   <a href="#editing">Editing</a> •
@@ -54,6 +55,17 @@ The GUI provides a searchable app list, metadata filtering, app detail preview, 
 > This tool is not affiliated with Valve Corporation or Steam.
 >
 > Steam is a registered trademark of Valve Corporation and is referenced solely for descriptive purposes.
+
+## Screenshots
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/7cdf595d-8101-456c-8994-a22b99442877" width="49%">
+  <img src="https://github.com/user-attachments/assets/06192c40-c9cc-4f9e-9fba-60032736d436" width="49%">
+</p>
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/2f4829a8-d177-4f06-a551-a5a429415d13" width="49%">
+</p>
 
 ## Installation
 
