@@ -6,7 +6,14 @@ from pathlib import Path
 from typing import Any, Callable
 
 from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QVariantAnimation
-from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import (
+    QColor,
+    QIcon,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFormLayout,
@@ -35,6 +42,7 @@ from steammetadatatool.core.appinfo import (
     find_steam_appinfo_path,
 )
 from steammetadatatool.core.keyvalues1 import kv_deep_get
+from steammetadatatool.gui.app_theme import apply_theme
 from steammetadatatool.gui.edit_assets_dialog import EditAssetsDialog
 from steammetadatatool.gui.edit_metadata_dialog import EditMetadataDialog
 from steammetadatatool.gui.steam_user import asset_paths_for_app
@@ -1357,7 +1365,7 @@ class MainWindow(QMainWindow):
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="steam_appinfo_gui")
+    parser = argparse.ArgumentParser(prog="steammetadatatool-gui")
     parser.add_argument(
         "--version",
         action="version",
@@ -1377,6 +1385,7 @@ def main() -> int:
             initial_path = str(detected_path)
 
     app = QApplication([])
+    apply_theme(app)
     window = MainWindow(initial_path)
     window.show()
     return app.exec()

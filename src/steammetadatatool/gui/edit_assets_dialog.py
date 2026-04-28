@@ -15,6 +15,7 @@ from PySide6.QtCore import (
     QUrl,
 )
 from PySide6.QtGui import (
+    QColor,
     QDesktopServices,
     QFont,
     QIcon,
@@ -39,6 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 from steammetadatatool.gui.app_data import app_data_path
+from steammetadatatool.gui.app_theme import COLORS
 from steammetadatatool.gui.edit_metadata_dialog import (
     ElidedLabel,
     _monochrome_icon_pixmap,
@@ -280,6 +282,8 @@ class PreviewPixmapLabel(QLabel):
         self._preferred_size = preferred_size
         self._corner_radius = corner_radius
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self.setAutoFillBackground(False)
         self.setFrameShape(QFrame.Shape.StyledPanel)
         self.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -514,23 +518,21 @@ class AssetNavButton(QToolButton):
             return
 
         palette = self.palette()
-        base_button_color = palette.button().color()
-        visible_border_color = palette.light().color().lighter(135)
         if not self.isEnabled():
-            background_color = base_button_color.lighter(104)
-            border_color = visible_border_color
+            background_color = QColor(COLORS["background_alt"])
+            border_color = QColor(COLORS["button"])
             arrow_color = palette.mid().color().lighter(145)
         elif self.isDown():
-            background_color = palette.midlight().color()
-            border_color = visible_border_color
+            background_color = QColor(COLORS["button_pressed"])
+            border_color = QColor(COLORS["highlight"])
             arrow_color = palette.buttonText().color()
         elif self.underMouse():
-            background_color = palette.light().color()
-            border_color = visible_border_color
+            background_color = QColor(COLORS["border"])
+            border_color = QColor(COLORS["accent"])
             arrow_color = palette.buttonText().color()
         else:
-            background_color = base_button_color.lighter(112)
-            border_color = visible_border_color
+            background_color = QColor(COLORS["button"])
+            border_color = QColor(COLORS["border_light"])
             arrow_color = palette.buttonText().color()
 
         painter = QPainter(self)
