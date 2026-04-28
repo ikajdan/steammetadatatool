@@ -22,6 +22,7 @@ from PySide6.QtGui import (
     QDesktopServices,
     QFont,
     QIcon,
+    QImageReader,
     QPainter,
     QPainterPath,
     QPen,
@@ -50,6 +51,7 @@ from steammetadatatool.gui.edit_metadata_dialog import (
 )
 from steammetadatatool.gui.steam_user import (
     cached_icon_path_for_app,
+    default_icon_path_for_app,
     original_icon_path_for_cached_icon,
     steam_grid_dir,
 )
@@ -94,6 +96,21 @@ _STEAM_GRID_BASENAME_SUFFIXES = {
     "logo_path": "_logo",
 }
 _STEAM_GRID_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+
+
+def _load_pixmap(path: str | Path) -> QPixmap:
+    path_text = str(path)
+    pixmap = QPixmap(path_text)
+    if not pixmap.isNull():
+        return pixmap
+
+    reader = QImageReader(path_text)
+    reader.setAutoTransform(True)
+    image = reader.read()
+    if image.isNull():
+        return QPixmap()
+
+    return QPixmap.fromImage(image)
 
 
 def _assets_manifest_path() -> Path:
@@ -211,7 +228,7 @@ def _apply_icon_asset(appid: str, source: Path) -> None:
     if not backup_path.exists() and cached_icon_path.exists():
         backup_path.write_bytes(cached_icon_path.read_bytes())
 
-    pixmap = QPixmap(str(source))
+    pixmap = _load_pixmap(source)
     if pixmap.isNull():
         raise ValueError(f"Could not load icon asset: {source}")
 
@@ -596,6 +613,11 @@ class EditAssetsDialog(QDialog):
         self._did_initial_asset_scroll = False
         self._initial_asset_scroll_attempts = 0
         self._appid = str(appid) if appid is not None else None
+        if self._appid is not None:
+            default_icon_path = default_icon_path_for_app(self._appid)
+            if default_icon_path is not None:
+                assets = dict(assets)
+                assets["icon_path"] = str(default_icon_path)
         self._custom_assets_by_key = _custom_asset_paths_for_app(appid)
         self._selected_custom_paths_by_key: dict[str, Path] = {}
         self._default_selected_asset_keys: set[str] = set()
@@ -1348,7 +1370,7 @@ class EditAssetsDialog(QDialog):
             label.set_source_pixmap(None)
             return
 
-        pixmap = QPixmap(path)
+        pixmap = _load_pixmap(path)
         label.set_source_pixmap(pixmap if not pixmap.isNull() else None)
 
     def _missing_asset_pixmap(self, width: int, height: int) -> QPixmap:
