@@ -12,7 +12,9 @@ SPDX-License-Identifier: CC0-1.0
   <developer id="io.github.ikajdan">
     <name>Ignacy Kajdan</name>
   </developer>
+  <url type="homepage">https://github.com/ikajdan/steammetadatatool</url>
   <launchable type="desktop-id">io.github.ikajdan.steammetadatatool.desktop</launchable>
+  <content_rating type="oars-1.1" />
   <description>
     <p>
       SteamMetadataTool is a utility for browsing, exporting, and customizing
