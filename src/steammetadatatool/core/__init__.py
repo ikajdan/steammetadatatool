@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Ignacy Kajdan <ignacy.kajdan@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 from __future__ import annotations
 
 from .appinfo import find_steam_appinfo_path, steam_base_paths

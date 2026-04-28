@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Ignacy Kajdan <ignacy.kajdan@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -6,6 +9,8 @@ build-backend = "setuptools.build_meta"
 name = "steammetadatatool"
 version = "0.1.0"
 description = "A tool for reading and editing Steam client metadata."
+license = "GPL-3.0-or-later"
+license-files = ["LICENSES/GPL-3.0-or-later.txt"]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []

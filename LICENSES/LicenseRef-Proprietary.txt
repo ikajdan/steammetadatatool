@@ -1,0 +1,9 @@
+Proprietary License
+
+Copyright © 2026 Ignacy Kajdan <ignacy.kajdan@gmail.com>
+
+All rights reserved.
+
+This file may not be copied, modified, distributed, sublicensed, or used
+separately from the software package without prior written permission from
+the copyright holder.

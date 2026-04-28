@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Ignacy Kajdan <ignacy.kajdan@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 from __future__ import annotations
 
 import json
@@ -11,6 +14,7 @@ from typing import Any
 from .appinfo import AppInfoFile
 from .models import AppSummary, MetadataMap, OverrideInput, SetValue
 from .writer import rewrite_appinfo
+
 
 def parse_set_arg(raw: str) -> SetValue:
     if "=" not in raw:
@@ -493,9 +497,7 @@ def _flatten_metadata_entries_for_metadata_file(
         for key, nested_value in value.items():
             next_prefix = f"{prefix}.{key}" if prefix else str(key)
             entries.extend(
-                _flatten_metadata_entries_for_metadata_file(
-                    nested_value, next_prefix
-                )
+                _flatten_metadata_entries_for_metadata_file(nested_value, next_prefix)
             )
         return entries
 
@@ -507,9 +509,7 @@ def _flatten_metadata_entries_for_metadata_file(
         for index, nested_value in enumerate(value):
             next_prefix = f"{prefix}[{index}]" if prefix else f"[{index}]"
             entries.extend(
-                _flatten_metadata_entries_for_metadata_file(
-                    nested_value, next_prefix
-                )
+                _flatten_metadata_entries_for_metadata_file(nested_value, next_prefix)
             )
         return entries
 

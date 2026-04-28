@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Ignacy Kajdan <ignacy.kajdan@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 from __future__ import annotations
 
 import os
@@ -5,7 +8,6 @@ from pathlib import Path
 
 from PySide6.QtGui import QColor, QFont, QIcon, QPalette
 from PySide6.QtWidgets import QApplication, QStyleFactory
-
 
 COLORS = {
     "accent": "#66c0f4",

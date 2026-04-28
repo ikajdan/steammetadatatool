@@ -1,3 +1,8 @@
+<!--
+SPDX-FileCopyrightText: 2026 Ignacy Kajdan <ignacy.kajdan@gmail.com>
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
 # SteamMetadataTool
 
 A tool for reading and editing Steam client metadata.
@@ -112,3 +117,9 @@ uv run steammetadatatool-cli \
   --aliases "csgo, cs2" \
   --write-out /tmp/appinfo.vdf
 ```
+
+## License
+
+This project is licensed under the GNU General Public License version 3 or later. See the [LICENSE](LICENSE.md) file for details.
+
+The application logo is not covered by the GNU GPL v3 or later and may not be used without prior permission.

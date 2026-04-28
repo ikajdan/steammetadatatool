@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+SPDX-FileCopyrightText: 2026 Ignacy Kajdan <ignacy.kajdan@gmail.com>
+SPDX-License-Identifier: LicenseRef-Proprietary
+-->
 <svg version="1" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
  <defs>
   <linearGradient id="c" x1="48" x2="48" y1="48" y2="208" gradientUnits="userSpaceOnUse">

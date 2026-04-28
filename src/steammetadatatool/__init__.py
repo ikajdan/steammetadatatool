@@ -1,8 +1,11 @@
+# SPDX-FileCopyrightText: 2026 Ignacy Kajdan <ignacy.kajdan@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 from __future__ import annotations
 
+import tomllib
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-import tomllib
 
 
 def _version_from_pyproject() -> str:
