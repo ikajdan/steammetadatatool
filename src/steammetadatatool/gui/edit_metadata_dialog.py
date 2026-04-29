@@ -101,15 +101,17 @@ def _normalize_metadata_payload(data: Any) -> list[dict[str, Any]]:
         apps = data.get("apps")
         if isinstance(apps, list):
             return [item for item in apps if isinstance(item, dict)]
+        if version is not None:
+            return []
         return [data]
     return []
 
 
 def _metadata_payload(apps: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
-        "version": _METADATA_FILE_VERSION,
-        "apps": apps,
-    }
+    payload: dict[str, Any] = {"version": _METADATA_FILE_VERSION}
+    if apps:
+        payload["apps"] = apps
+    return payload
 
 
 def _validate_json_file_version(
@@ -155,7 +157,7 @@ class EditMetadataDialog(QDialog):
         *,
         appid: str | None = None,
         app_name: str | None = None,
-        on_save: Callable[[dict[str, str]], None] | None = None,
+        on_save: Callable[[list[dict[str, str]]], None] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -404,22 +406,40 @@ class EditMetadataDialog(QDialog):
                     existing_changes = []
                     app_entry["changes"] = existing_changes
 
+                existing_default_values = {
+                    str(item.get("key")): _format_metadata_value(
+                        item.get("old_value", "")
+                    )
+                    for item in existing_changes
+                    if isinstance(item, dict) and item.get("key") is not None
+                }
+                changes_to_save = [
+                    change
+                    for change in changes
+                    if change["new_value"]
+                    != existing_default_values.get(change["key"], change["old_value"])
+                ]
                 changed_keys = {change["key"] for change in changes}
+                changed_keys_to_save = {change["key"] for change in changes_to_save}
                 existing_changes[:] = [
                     item
                     for item in existing_changes
                     if not isinstance(item, dict)
                     or str(item.get("key")) not in self._original_entries
-                    or str(item.get("key")) in changed_keys
-                    or current_entries.get(str(item.get("key")))
-                    == _format_metadata_value(item.get("new_value"))
+                    or str(item.get("key")) in changed_keys_to_save
+                    or (
+                        current_entries.get(str(item.get("key")))
+                        == _format_metadata_value(item.get("new_value"))
+                        and current_entries.get(str(item.get("key")))
+                        != self._original_entries.get(str(item.get("key")), "")
+                    )
                 ]
                 existing_changes_by_key = {
                     str(item.get("key")): item
                     for item in existing_changes
                     if isinstance(item, dict) and item.get("key") is not None
                 }
-                for change in changes:
+                for change in changes_to_save:
                     existing_change = existing_changes_by_key.get(change["key"])
                     if existing_change is None:
                         existing_changes.append(change)
@@ -455,7 +475,7 @@ class EditMetadataDialog(QDialog):
                 encoding="utf-8",
             )
             if self._on_save is not None:
-                self._on_save(current_entries)
+                self._on_save(changes)
         except (OSError, json.JSONDecodeError) as exc:
             QMessageBox.critical(self, "Edit Metadata", str(exc))
             return
@@ -463,6 +483,7 @@ class EditMetadataDialog(QDialog):
             QMessageBox.critical(self, "Edit Metadata", str(exc))
             return
 
+        self._original_entries = dict(current_entries)
         self._saved_change_keys = self._saved_change_keys_from_payload(existing_payload)
         self._saved_entries = self._entries_with_saved_changes(
             dict(self._original_entries)

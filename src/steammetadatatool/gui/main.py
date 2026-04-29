@@ -46,7 +46,11 @@ from steammetadatatool.core.appinfo import (
 )
 from steammetadatatool.core.keyvalues1 import kv_deep_get
 from steammetadatatool.core.models import OverrideInput
-from steammetadatatool.core.services import load_metadata_file, write_modified_appinfo
+from steammetadatatool.core.services import (
+    load_metadata_file,
+    metadata_values_from_change_entries,
+    write_modified_appinfo,
+)
 from steammetadatatool.gui.app_data import app_data_path
 from steammetadatatool.gui.app_theme import apply_theme
 from steammetadatatool.gui.edit_assets_dialog import EditAssetsDialog
@@ -933,27 +937,36 @@ class MainWindow(QMainWindow):
             raw_metadata,
             appid=details.get("appid") if details is not None else None,
             app_name=details.get("name") if details is not None else None,
-            on_save=lambda _entries, selected_appid=appid: (
-                self._apply_saved_metadata_changes(selected_appid)
+            on_save=lambda changes, selected_appid=appid: (
+                self._apply_saved_metadata_changes(selected_appid, changes)
             ),
             parent=self,
         )
         dialog.exec()
 
-    def _apply_saved_metadata_changes(self, appid: int) -> None:
+    def _apply_saved_metadata_changes(
+        self, appid: int, changes: list[dict[str, str]]
+    ) -> None:
         if self._appinfo_path is None:
             raise ValueError("No appinfo.vdf path is loaded.")
 
         metadata_path = app_data_path("metadata.json")
         metadata_overrides = load_metadata_file(metadata_path)
-        if appid not in metadata_overrides:
+        values = dict(metadata_overrides.get(appid, {}))
+        values.update(
+            metadata_values_from_change_entries(
+                changes,
+                where=f"apps[{appid}].changes",
+            )
+        )
+        if not values:
             return
 
         write_modified_appinfo(
             path=self._appinfo_path,
             appids={appid},
             overrides=OverrideInput(),
-            metadata_overrides={appid: metadata_overrides[appid]},
+            metadata_overrides={appid: values},
             write_out=None,
         )
         self._refresh_app_from_disk(appid)

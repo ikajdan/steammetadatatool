@@ -363,15 +363,17 @@ def _normalize_metadata_apps_payload(payload: Any) -> list[dict[str, Any]]:
         apps = payload.get("apps")
         if isinstance(apps, list):
             return [item for item in apps if isinstance(item, dict)]
+        if version is not None:
+            return []
         return [payload]
     raise ValueError("--metadata-file must contain a JSON object or array")
 
 
 def _metadata_apps_payload(apps: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
-        "version": METADATA_FILE_VERSION,
-        "apps": apps,
-    }
+    payload: dict[str, Any] = {"version": METADATA_FILE_VERSION}
+    if apps:
+        payload["apps"] = apps
+    return payload
 
 
 def _validate_json_file_version(
@@ -465,10 +467,16 @@ def _build_override_values_from_change_entries(
     if not isinstance(changes, list):
         raise ValueError(f"{where}.changes must be an array")
 
+    return metadata_values_from_change_entries(changes, where=f"{where}.changes")
+
+
+def metadata_values_from_change_entries(
+    changes: list[Any], *, where: str = "changes"
+) -> dict[str, Any]:
     values: dict[str, Any] = {}
     set_values: list[SetValue] = []
     for index, change in enumerate(changes):
-        change_where = f"{where}.changes[{index}]"
+        change_where = f"{where}[{index}]"
         if not isinstance(change, dict):
             raise ValueError(f"{change_where} must be an object")
 
