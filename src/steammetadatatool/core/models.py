@@ -23,8 +23,6 @@ class OverrideInput:
     name: str | None = None
     sort_as: str | None = None
     aliases: list[str] | None = None
-    developer: str | None = None
-    publisher: str | None = None
     original_release_date: str | None = None
     steam_release_date: str | None = None
     set_values: list[SetValue] | None = None

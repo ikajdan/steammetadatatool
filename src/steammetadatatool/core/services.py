@@ -55,8 +55,6 @@ def has_any_overrides(overrides: OverrideInput) -> bool:
             overrides.name,
             overrides.sort_as,
             overrides.aliases,
-            overrides.developer,
-            overrides.publisher,
             overrides.original_release_date,
             overrides.steam_release_date,
         )
@@ -270,8 +268,6 @@ def _build_override_values(raw: dict[str, Any], *, where: str) -> dict[str, Any]
         "name",
         "sort_as",
         "aliases",
-        "developer",
-        "publisher",
         "original_release_date",
         "steam_release_date",
     }
@@ -300,16 +296,6 @@ def _build_override_values(raw: dict[str, Any], *, where: str) -> dict[str, Any]
         ):
             raise ValueError(f"{where}: aliases must be an array of strings")
         values["aliases"] = [x.strip() for x in aliases if x.strip()]
-
-    if "developer" in raw:
-        if not isinstance(raw["developer"], str):
-            raise ValueError(f"{where}: developer must be a string")
-        values["developer"] = raw["developer"]
-
-    if "publisher" in raw:
-        if not isinstance(raw["publisher"], str):
-            raise ValueError(f"{where}: publisher must be a string")
-        values["publisher"] = raw["publisher"]
 
     if "original_release_date" in raw:
         if not isinstance(raw["original_release_date"], str):
@@ -402,10 +388,6 @@ def _key_to_internal_override(key: str, new_value: Any) -> tuple[str, Any]:
         return "name", str(new_value)
     if key in {"appinfo.common.sortas", "common.sortas"}:
         return "sort_as", str(new_value)
-    if key in {"appinfo.extended.developer", "extended.developer"}:
-        return "developer", str(new_value)
-    if key in {"appinfo.extended.publisher", "extended.publisher"}:
-        return "publisher", str(new_value)
     if key in {
         "appinfo.common.original_release_date",
         "common.original_release_date",
@@ -536,10 +518,6 @@ def _change_entries_from_values(
         add_entry("appinfo.common.sortas", values["sort_as"])
     if "aliases" in values:
         add_entry("appinfo.common.aliases", values["aliases"])
-    if "developer" in values:
-        add_entry("appinfo.extended.developer", values["developer"])
-    if "publisher" in values:
-        add_entry("appinfo.extended.publisher", values["publisher"])
     if "original_release_date" in values:
         add_entry(
             "appinfo.common.original_release_date", values["original_release_date"]
@@ -579,10 +557,6 @@ def _override_values(overrides: OverrideInput) -> dict[str, Any]:
         values["sort_as"] = overrides.sort_as
     if overrides.aliases is not None:
         values["aliases"] = overrides.aliases
-    if overrides.developer is not None:
-        values["developer"] = overrides.developer
-    if overrides.publisher is not None:
-        values["publisher"] = overrides.publisher
     if overrides.original_release_date is not None:
         values["original_release_date"] = overrides.original_release_date
     if overrides.steam_release_date is not None:
@@ -605,76 +579,28 @@ def _apply_overrides_for_app(
 
 
 def _apply_override_values(app_data: dict[str, Any], values: dict[str, Any]) -> None:
-    def update_associations(
-        root_path: list[str], assoc_type: str, new_name: str
-    ) -> None:
-        cur: Any = app_data
-        for part in root_path:
-            if not isinstance(cur, dict):
-                return
-            cur = cur.get(part)
-        if not isinstance(cur, dict):
-            return
-
-        assoc = cur.get("associations")
-        if not isinstance(assoc, dict):
-            cur["associations"] = {"0": {"type": assoc_type, "name": new_name}}
-            return
-
-        touched = False
-        for entry in assoc.values():
-            if isinstance(entry, dict) and entry.get("type") == assoc_type:
-                entry["name"] = new_name
-                touched = True
-
-        if not touched:
-            numeric = [
-                int(k) for k in assoc.keys() if isinstance(k, str) and k.isdigit()
-            ]
-            nxt = str(max(numeric) + 1) if numeric else "0"
-            assoc[nxt] = {"type": assoc_type, "name": new_name}
-
     name = values.get("name")
     if name is not None:
         _deep_set(app_data, ["appinfo", "common", "name"], name)
-        _deep_set(app_data, ["common", "name"], name)
 
     sort_as = values.get("sort_as")
     if sort_as is not None:
         _deep_set(app_data, ["appinfo", "common", "sortas"], sort_as)
-        _deep_set(app_data, ["common", "sortas"], sort_as)
 
     aliases = values.get("aliases")
     if aliases is not None:
         aliases_s = ", ".join(aliases)
-        _deep_set(app_data, ["appinfo", "common", "aliases"], aliases_s)
-        _deep_set(app_data, ["common", "aliases"], aliases_s)
-
-    developer = values.get("developer")
-    if developer is not None:
-        _deep_set(app_data, ["appinfo", "extended", "developer"], developer)
-        _deep_set(app_data, ["extended", "developer"], developer)
-        update_associations(["appinfo", "common"], "developer", developer)
-        update_associations(["common"], "developer", developer)
-
-    publisher = values.get("publisher")
-    if publisher is not None:
-        _deep_set(app_data, ["appinfo", "extended", "publisher"], publisher)
-        _deep_set(app_data, ["extended", "publisher"], publisher)
-        update_associations(["appinfo", "common"], "publisher", publisher)
-        update_associations(["common"], "publisher", publisher)
+        _deep_set(app_data, ["appinfo", "extended", "aliases"], aliases_s)
 
     original_release_date = values.get("original_release_date")
     if original_release_date is not None:
         ts = _parse_date_to_unix(original_release_date)
         _deep_set(app_data, ["appinfo", "common", "original_release_date"], ts)
-        _deep_set(app_data, ["common", "original_release_date"], ts)
 
     steam_release_date = values.get("steam_release_date")
     if steam_release_date is not None:
         ts = _parse_date_to_unix(steam_release_date)
         _deep_set(app_data, ["appinfo", "common", "steam_release_date"], ts)
-        _deep_set(app_data, ["common", "steam_release_date"], ts)
 
     set_values = values.get("set_values")
     if set_values:

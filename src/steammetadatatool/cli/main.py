@@ -50,8 +50,6 @@ def _build_parser() -> argparse.ArgumentParser:
         type=_aliases_arg,
         help="Override aliases (comma-separated or JSON array)",
     )
-    parser.add_argument("--developer", help="Override extended.developer")
-    parser.add_argument("--publisher", help="Override extended.publisher")
     parser.add_argument(
         "--original-release-date",
         dest="original_release_date",
@@ -107,8 +105,6 @@ def main() -> int:
             name=args.name,
             sort_as=args.sort_as,
             aliases=args.aliases,
-            developer=args.developer,
-            publisher=args.publisher,
             original_release_date=args.original_release_date,
             steam_release_date=args.steam_release_date,
             set_values=args.set_values,
