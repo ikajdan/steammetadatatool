@@ -214,7 +214,7 @@ class EditMetadataDialog(QDialog):
         header_row_layout.addWidget(self._search_input, 0, Qt.AlignmentFlag.AlignRight)
         dialog_layout.addWidget(header_row)
 
-        metadata_table = QTableWidget(len(entries), 2, self)
+        metadata_table = QTableWidget(len(self._saved_entries), 2, self)
         self._metadata_table = metadata_table
         metadata_table.setSizePolicy(
             QSizePolicy.Policy.Expanding,
@@ -240,7 +240,7 @@ class EditMetadataDialog(QDialog):
             1, QHeaderView.ResizeMode.Fixed
         )
 
-        for row, (key, value) in enumerate(entries):
+        for row, (key, value) in enumerate(self._saved_entries.items()):
             key_item = QTableWidgetItem(key)
             value_item = QTableWidgetItem(value)
             key_item.setFlags(key_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -407,6 +407,8 @@ class EditMetadataDialog(QDialog):
                     if not isinstance(item, dict)
                     or str(item.get("key")) not in self._original_entries
                     or str(item.get("key")) in changed_keys
+                    or current_entries.get(str(item.get("key")))
+                    == _format_metadata_value(item.get("new_value"))
                 ]
                 existing_changes_by_key = {
                     str(item.get("key")): item
@@ -457,9 +459,33 @@ class EditMetadataDialog(QDialog):
             QMessageBox.critical(self, "Edit Metadata", str(exc))
             return
 
-        self._saved_change_keys = {change["key"] for change in changes}
-        self._saved_entries = current_entries
+        self._saved_change_keys = self._saved_change_keys_from_payload(existing_payload)
+        self._saved_entries = self._entries_with_saved_changes(
+            dict(self._original_entries)
+        )
         self._refresh_unsaved_change_styles()
+
+    def _saved_change_keys_from_payload(
+        self, payload: list[dict[str, Any]]
+    ) -> set[str]:
+        keys: set[str] = set()
+        for app_entry in payload:
+            if str(app_entry.get("appid")) != str(self._appid):
+                continue
+
+            changes = app_entry.get("changes")
+            if not isinstance(changes, list):
+                continue
+
+            for change in changes:
+                if not isinstance(change, dict):
+                    continue
+
+                key = change.get("key")
+                if isinstance(key, str):
+                    keys.add(key)
+
+        return keys
 
     def _current_entries(self) -> dict[str, str]:
         entries: dict[str, str] = {}
