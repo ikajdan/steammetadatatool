@@ -155,7 +155,6 @@ def steam_base_paths() -> list[Path]:
     if sys.platform.startswith("linux"):
         return [
             home / ".local/share/Steam",
-            home / ".var/app/com.valvesoftware.Steam/data/Steam",
             home / ".var/app/com.valvesoftware.Steam/.local/share/Steam",
         ]
 
