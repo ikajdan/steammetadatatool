@@ -27,6 +27,8 @@ from PySide6.QtWidgets import (
 
 from steammetadatatool.gui.app_data import app_data_path
 
+_METADATA_FILE_VERSION = 1
+
 
 def _monochrome_icon_pixmap(
     icon: QIcon, size: int, color: QColor, right_padding: int = 0
@@ -88,8 +90,38 @@ def _normalize_metadata_payload(data: Any) -> list[dict[str, Any]]:
     if isinstance(data, list):
         return [item for item in data if isinstance(item, dict)]
     if isinstance(data, dict):
+        version = data.get("version")
+        if version is not None:
+            _validate_json_file_version(
+                version,
+                current_version=_METADATA_FILE_VERSION,
+                file_description="metadata file",
+            )
+
+        apps = data.get("apps")
+        if isinstance(apps, list):
+            return [item for item in apps if isinstance(item, dict)]
         return [data]
     return []
+
+
+def _metadata_payload(apps: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "version": _METADATA_FILE_VERSION,
+        "apps": apps,
+    }
+
+
+def _validate_json_file_version(
+    version: Any, *, current_version: int, file_description: str
+) -> None:
+    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+        raise ValueError(f"{file_description}: version must be a positive integer")
+    if version > current_version:
+        raise ValueError(
+            f"{file_description}: unsupported version {version} "
+            f"(latest supported is {current_version})"
+        )
 
 
 class ElidedLabel(QLabel):
@@ -296,7 +328,7 @@ class EditMetadataDialog(QDialog):
 
         try:
             existing_data = json.loads(metadata_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+        except (OSError, ValueError):
             return entries
 
         saved_entries = dict(entries)
@@ -408,7 +440,12 @@ class EditMetadataDialog(QDialog):
 
             metadata_path.parent.mkdir(parents=True, exist_ok=True)
             metadata_path.write_text(
-                json.dumps(existing_payload, indent=2, ensure_ascii=True) + "\n",
+                json.dumps(
+                    _metadata_payload(existing_payload),
+                    indent=2,
+                    ensure_ascii=True,
+                )
+                + "\n",
                 encoding="utf-8",
             )
             if self._on_save is not None:

@@ -15,6 +15,8 @@ from .appinfo import AppInfoFile
 from .models import AppSummary, MetadataMap, OverrideInput, SetValue
 from .writer import rewrite_appinfo
 
+METADATA_FILE_VERSION = 1
+
 
 def parse_set_arg(raw: str) -> SetValue:
     if "=" not in raw:
@@ -156,7 +158,12 @@ def write_metadata_file(
 
     try:
         path.write_text(
-            json.dumps(existing_entries, ensure_ascii=False, indent=2) + "\n",
+            json.dumps(
+                _metadata_apps_payload(existing_entries),
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
             encoding="utf-8",
         )
     except OSError as exc:
@@ -345,11 +352,38 @@ def _normalize_metadata_apps_payload(payload: Any) -> list[dict[str, Any]]:
     if isinstance(payload, list):
         return [item for item in payload if isinstance(item, dict)]
     if isinstance(payload, dict):
+        version = payload.get("version")
+        if version is not None:
+            _validate_json_file_version(
+                version,
+                current_version=METADATA_FILE_VERSION,
+                file_description="metadata file",
+            )
+
         apps = payload.get("apps")
         if isinstance(apps, list):
             return [item for item in apps if isinstance(item, dict)]
         return [payload]
     raise ValueError("--metadata-file must contain a JSON object or array")
+
+
+def _metadata_apps_payload(apps: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "version": METADATA_FILE_VERSION,
+        "apps": apps,
+    }
+
+
+def _validate_json_file_version(
+    version: Any, *, current_version: int, file_description: str
+) -> None:
+    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+        raise ValueError(f"{file_description}: version must be a positive integer")
+    if version > current_version:
+        raise ValueError(
+            f"{file_description}: unsupported version {version} "
+            f"(latest supported is {current_version})"
+        )
 
 
 def _parse_metadata_appid(appid_raw: Any, *, where: str) -> int:

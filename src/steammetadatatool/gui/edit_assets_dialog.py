@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from PySide6.QtCore import (
     QEasingCurve,
@@ -64,6 +64,7 @@ _CUSTOM_ASSET_DIRS = {
     "icon_path": "icon",
 }
 
+_ASSETS_MANIFEST_VERSION = 1
 _ASSET_NAV_BUTTON_SIZE = 44
 _ASSET_NAV_SCROLLBAR_GAP = 8
 _ASSET_VARIANT_SPACING = 14
@@ -128,10 +129,35 @@ def _custom_asset_key_name(asset_key: str) -> str:
 def _load_assets_manifest() -> dict[str, object]:
     path = _assets_manifest_path()
     if not path.exists():
-        return {}
+        return {"version": _ASSETS_MANIFEST_VERSION}
 
     data = json.loads(path.read_text(encoding="utf-8"))
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {"version": _ASSETS_MANIFEST_VERSION}
+
+    version = data.get("version")
+    if version is not None:
+        _validate_json_file_version(
+            version,
+            current_version=_ASSETS_MANIFEST_VERSION,
+            file_description="assets manifest",
+        )
+    else:
+        data["version"] = _ASSETS_MANIFEST_VERSION
+
+    return data
+
+
+def _validate_json_file_version(
+    version: Any, *, current_version: int, file_description: str
+) -> None:
+    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
+        raise ValueError(f"{file_description}: version must be a positive integer")
+    if version > current_version:
+        raise ValueError(
+            f"{file_description}: unsupported version {version} "
+            f"(latest supported is {current_version})"
+        )
 
 
 def _selected_asset_names_for_app(appid: str | None) -> dict[str, str]:
@@ -140,7 +166,7 @@ def _selected_asset_names_for_app(appid: str | None) -> dict[str, str]:
 
     try:
         manifest = _load_assets_manifest()
-    except (OSError, json.JSONDecodeError):
+    except (OSError, ValueError):
         return {}
 
     app_entry = manifest.get(str(appid))
@@ -257,6 +283,7 @@ def _write_selected_assets_manifest(
 ) -> None:
     manifest_path = _assets_manifest_path()
     manifest = _load_assets_manifest()
+    manifest["version"] = _ASSETS_MANIFEST_VERSION
 
     app_entry = manifest.get(appid)
     if not isinstance(app_entry, dict):
