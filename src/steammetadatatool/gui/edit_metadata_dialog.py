@@ -177,6 +177,7 @@ class EditMetadataDialog(QDialog):
         self._saved_change_keys: set[str] = set()
         self._saved_entries = self._entries_with_saved_changes(dict(entries))
         self._search_text = ""
+        self._apply_button: QPushButton | None = None
         action_icon_color = self.palette().placeholderText().color()
         readonly_text_color = self.palette().placeholderText().color()
 
@@ -284,6 +285,7 @@ class EditMetadataDialog(QDialog):
             "Apply",
             dialog_actions,
         )
+        self._apply_button = apply_button
         apply_button.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
@@ -291,6 +293,7 @@ class EditMetadataDialog(QDialog):
         apply_button.setMinimumHeight(40)
         apply_button.setMaximumWidth(360)
         apply_button.setIconSize(QSize(24, 24))
+        apply_button.setEnabled(False)
         apply_button.clicked.connect(self._save_changes)
         dialog_actions_layout.addWidget(apply_button)
 
@@ -317,6 +320,7 @@ class EditMetadataDialog(QDialog):
         dialog_actions_layout.setStretch(1, 1)
         dialog_actions_layout.setStretch(2, 1)
         dialog_layout.addWidget(dialog_actions)
+        self._refresh_apply_button_state()
 
     def _entries_with_saved_changes(self, entries: dict[str, str]) -> dict[str, str]:
         if self._appid is None:
@@ -506,6 +510,7 @@ class EditMetadataDialog(QDialog):
             return
 
         self._set_unsaved_change_style(item, key_item.text())
+        self._refresh_apply_button_state()
 
     def _refresh_unsaved_change_styles(self) -> None:
         for row in range(self._metadata_table.rowCount()):
@@ -514,6 +519,18 @@ class EditMetadataDialog(QDialog):
             if key_item is None or value_item is None:
                 continue
             self._set_unsaved_change_style(value_item, key_item.text())
+        self._refresh_apply_button_state()
+
+    def _has_unsaved_changes(self) -> bool:
+        current_entries = self._current_entries()
+        return any(
+            current_entries.get(key, "") != saved_value
+            for key, saved_value in self._saved_entries.items()
+        )
+
+    def _refresh_apply_button_state(self) -> None:
+        if self._apply_button is not None:
+            self._apply_button.setEnabled(self._has_unsaved_changes())
 
     def _set_unsaved_change_style(self, item: QTableWidgetItem, key: str) -> None:
         font = item.font()
