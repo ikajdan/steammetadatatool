@@ -69,6 +69,10 @@ from steammetadatatool.gui.app_theme import apply_theme
 from steammetadatatool.gui.asset_optimizer import run_asset_optimization_prompt
 from steammetadatatool.gui.edit_assets_dialog import EditAssetsDialog
 from steammetadatatool.gui.edit_metadata_dialog import EditMetadataDialog
+from steammetadatatool.gui.missing_appinfo_dialog import (
+    select_appinfo_file_after_detection_failed,
+    select_missing_appinfo_file,
+)
 from steammetadatatool.gui.steam_user import asset_paths_for_app
 
 
@@ -686,8 +690,8 @@ class AppLoadWorker(QObject):
     def run(self) -> None:
         try:
             path_obj = Path(self._path).expanduser()
-            if not path_obj.exists():
-                raise FileNotFoundError(f"File does not exist:\n{path_obj}")
+            if not path_obj.is_file():
+                raise FileNotFoundError(f"Path is not a file:\n{path_obj}")
 
             rows, details_by_appid, filter_matches_by_appid = _read_app_rows(path_obj)
             self.loaded.emit(
@@ -1209,6 +1213,15 @@ class MainWindow(QMainWindow):
         if self._load_thread is not None:
             return
 
+        path_obj = Path(path).expanduser()
+        if not path_obj.is_file():
+            selected_path = select_missing_appinfo_file(self, path_obj)
+            if selected_path is None:
+                return
+
+            self._load_apps_async(str(selected_path))
+            return
+
         self._table.setRowCount(0)
         self._set_details(None)
         self._search_input.setEnabled(False)
@@ -1257,12 +1270,12 @@ class MainWindow(QMainWindow):
 
     def _load_apps(self, path: str) -> None:
         path_obj = Path(path).expanduser()
-        if not path_obj.exists():
-            QMessageBox.warning(
-                self,
-                "SteamMetadataTool",
-                f"File does not exist:\n{path_obj}",
-            )
+        if not path_obj.is_file():
+            selected_path = select_missing_appinfo_file(self, path_obj)
+            if selected_path is None:
+                return
+
+            self._load_apps(str(selected_path))
             return
 
         try:
@@ -1711,6 +1724,23 @@ def main() -> int:
     app.setDesktopFileName("io.github.ikajdan.steammetadatatool")
     apply_theme(app)
     window = MainWindow()
+    initial_path_obj = Path(initial_path).expanduser() if initial_path else None
+    if initial_path_obj is not None and not initial_path_obj.is_file():
+        selected_path = select_missing_appinfo_file(window, initial_path_obj)
+        if selected_path is not None:
+            initial_path = str(selected_path)
+        else:
+            window.close()
+            return 0
+
+    if not initial_path:
+        selected_path = select_appinfo_file_after_detection_failed(window)
+        if selected_path is not None:
+            initial_path = str(selected_path)
+        else:
+            window.close()
+            return 0
+
     window.show()
     if initial_path:
         QTimer.singleShot(0, lambda: window._load_apps_async(initial_path))
