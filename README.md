@@ -110,18 +110,20 @@ uv run steammetadatatool-cli
 Dump an app as JSON:
 
 ```bash
-uv run steammetadatatool-cli --appid 730 --json | python -m json.tool
+uv run steammetadatatool-cli --appid 10 --json | python -m json.tool
 ```
 
 ### GUI
+
+To use the windowed GUI:
 
 ```bash
 uv run --extra gui steammetadatatool-gui
 ```
 
-## Steam Library Assets
+The main window shows a list of installed apps with their names and IDs. Clicking on an app displays its metadata in the right pane, including library assets. The _Edit Metadata_ button opens a dialog to modify metadata fields. The _Edit Assets_ button allows setting custom library artwork by selecting image files for each asset type.
 
-Steam Library assets are images that represent games in the Steam Library. They are used to display game information and artwork in the library view. The required assets and their specifications are as follows:
+Steam library assets are images that represent games in the Steam library. Each asset type has specific size requirements:
 
 | Asset   | Required size                   |
 | ------- | ------------------------------- |
@@ -132,6 +134,11 @@ Steam Library assets are images that represent games in the Steam Library. They 
 | Icon    | 184 px by 184 px                |
 
 The full specification can be found at: <https://partner.steamgames.com/doc/store/assets>.
+
+> [!TIP]
+> Steam Library asset changes might not refresh immediately in the Steam client.
+> If updated artwork does not appear right away, switch to another game and back,
+> or restart the Steam client.
 
 ## Editing
 
@@ -169,7 +176,7 @@ Apply metadata overrides from a JSON file for a specific app:
 ```bash
 uv run steammetadatatool-cli \
   --metadata-file metadata.json \
-  --appid 730
+  --appid 10
 ```
 
 Apply metadata overrides from a JSON file for all apps:
@@ -193,8 +200,8 @@ uv run steammetadatatool-cli \
 ```bash
 uv run steammetadatatool-cli \
   --appid 10 \
-  --name "Counter-Strike (Modded)" \
-  --aliases "csgo, cs2" \
+  --name "Counter-Strike 1.6" \
+  --aliases "cs, 16" \
   --write-out /tmp/appinfo.vdf
 ```
 
