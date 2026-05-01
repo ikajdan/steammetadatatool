@@ -381,12 +381,14 @@ class PreviewPixmapLabel(QLabel):
         parent: QWidget | None = None,
         *,
         corner_radius: float = 10.0,
+        round_letterboxed_source: bool = True,
     ) -> None:
         super().__init__(parent)
         self._source_pixmap: QPixmap | None = None
         self._placeholder_pixmap = placeholder
         self._preferred_size = preferred_size
         self._corner_radius = corner_radius
+        self._round_letterboxed_source = round_letterboxed_source
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAutoFillBackground(False)
@@ -439,7 +441,10 @@ class PreviewPixmapLabel(QLabel):
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
-        self.setPixmap(self._rounded_pixmap(scaled))
+        if self._round_letterboxed_source or scaled.size() == self.size():
+            self.setPixmap(self._rounded_pixmap(scaled))
+        else:
+            self.setPixmap(self._clipped_canvas_pixmap(scaled))
 
     def _placeholder_display_pixmap(self) -> QPixmap:
         target_size = self.size()
@@ -488,6 +493,34 @@ class PreviewPixmapLabel(QLabel):
         painter.end()
         return rounded
 
+    def _clipped_canvas_pixmap(self, pixmap: QPixmap) -> QPixmap:
+        target_size = self.size()
+        if target_size.width() <= 0 or target_size.height() <= 0:
+            return QPixmap()
+
+        canvas = QPixmap(target_size)
+        canvas.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(canvas)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if self._corner_radius > 0:
+            path = QPainterPath()
+            path.addRoundedRect(
+                0,
+                0,
+                float(target_size.width()),
+                float(target_size.height()),
+                self._corner_radius,
+                self._corner_radius,
+            )
+            painter.setClipPath(path)
+
+        x = (target_size.width() - pixmap.width()) // 2
+        y = (target_size.height() - pixmap.height()) // 2
+        painter.drawPixmap(x, y, pixmap)
+        painter.end()
+        return canvas
+
 
 class RatioPreviewPixmapLabel(PreviewPixmapLabel):
     def __init__(
@@ -499,12 +532,14 @@ class RatioPreviewPixmapLabel(PreviewPixmapLabel):
         parent: QWidget | None = None,
         *,
         corner_radius: float = 16.0,
+        round_letterboxed_source: bool = True,
     ) -> None:
         super().__init__(
             placeholder,
             preferred_size,
             parent,
             corner_radius=corner_radius,
+            round_letterboxed_source=round_letterboxed_source,
         )
         self._ratio_width = ratio_width
         self._ratio_height = ratio_height
@@ -1095,7 +1130,7 @@ class EditAssetsDialog(QDialog):
         )
         variant_layout.setSpacing(0)
 
-        preview = self._create_preview_label(size, ratio)
+        preview = self._create_preview_label(asset_key, size, ratio)
         if ratio is None:
             preview.setMinimumSize(preview_width, preview_height)
             preview.setMaximumHeight(preview_height)
@@ -1427,11 +1462,13 @@ class EditAssetsDialog(QDialog):
 
     def _create_preview_label(
         self,
+        asset_key: str,
         size: tuple[int, int],
         ratio: tuple[int, int] | None,
     ) -> PreviewPixmapLabel:
         preview_width, preview_height = size
         placeholder = self._missing_asset_pixmap(preview_width, preview_height)
+        round_letterboxed_source = asset_key not in {"hero_path", "logo_path"}
         if ratio is not None:
             ratio_width, ratio_height = ratio
             preview = RatioPreviewPixmapLabel(
@@ -1440,6 +1477,7 @@ class EditAssetsDialog(QDialog):
                 ratio_width,
                 ratio_height,
                 corner_radius=_ASSET_PREVIEW_CORNER_RADIUS,
+                round_letterboxed_source=round_letterboxed_source,
             )
             preview.setMinimumWidth(0)
             return preview
@@ -1448,6 +1486,7 @@ class EditAssetsDialog(QDialog):
             placeholder,
             QSize(preview_width, preview_height),
             corner_radius=_ASSET_PREVIEW_CORNER_RADIUS,
+            round_letterboxed_source=round_letterboxed_source,
         )
         return preview
 
