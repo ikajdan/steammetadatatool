@@ -33,9 +33,11 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QDialog,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -100,6 +102,19 @@ _STEAM_GRID_BASENAME_SUFFIXES = {
     "logo_path": "_logo",
 }
 _STEAM_GRID_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+_CUSTOM_ASSET_IMAGE_FILTER = (
+    "Images (*.png *.jpg *.jpeg);;"
+    "PNG images (*.png);;"
+    "JPEG images (*.jpg *.jpeg);;"
+    "All files (*)"
+)
+_CUSTOM_ICON_ASSET_IMAGE_FILTER = (
+    "Images (*.png *.jpg *.jpeg *.ico);;"
+    "PNG images (*.png);;"
+    "JPEG images (*.jpg *.jpeg);;"
+    "Icon files (*.ico);;"
+    "All files (*)"
+)
 _APPIMAGE_EXTERNAL_ENV_KEYS = (
     "APPDIR",
     "APPIMAGE",
@@ -304,6 +319,18 @@ def _replace_with_file_copy(
     target.write_bytes(source.read_bytes())
 
 
+def _custom_asset_target(appid: str, asset_key: str, source: Path) -> Path:
+    asset_dir = _assets_dir() / appid / _custom_asset_key_name(asset_key)
+    suffix = source.suffix.lower()
+    stem = source.stem.strip() or _custom_asset_key_name(asset_key)
+    target = asset_dir / f"{stem}{suffix}"
+    index = 2
+    while target.exists():
+        target = asset_dir / f"{stem}-{index}{suffix}"
+        index += 1
+    return target
+
+
 def _apply_icon_asset(appid: str, source: Path) -> None:
     cached_icon_path = cached_icon_path_for_app(appid)
     if cached_icon_path is None:
@@ -382,6 +409,7 @@ class PreviewPixmapLabel(QLabel):
         *,
         corner_radius: float = 10.0,
         round_letterboxed_source: bool = True,
+        placeholder_background_color: QColor | None = None,
     ) -> None:
         super().__init__(parent)
         self._source_pixmap: QPixmap | None = None
@@ -389,6 +417,7 @@ class PreviewPixmapLabel(QLabel):
         self._preferred_size = preferred_size
         self._corner_radius = corner_radius
         self._round_letterboxed_source = round_letterboxed_source
+        self._placeholder_background_color = placeholder_background_color
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAutoFillBackground(False)
@@ -452,7 +481,9 @@ class PreviewPixmapLabel(QLabel):
             return QPixmap()
 
         canvas = QPixmap(target_size)
-        canvas.fill(self.palette().alternateBase().color())
+        canvas.fill(
+            self._placeholder_background_color or self.palette().alternateBase().color()
+        )
 
         icon_size = min(target_size.width(), target_size.height(), 32)
         placeholder = self._placeholder_pixmap.scaled(
@@ -533,6 +564,7 @@ class RatioPreviewPixmapLabel(PreviewPixmapLabel):
         *,
         corner_radius: float = 16.0,
         round_letterboxed_source: bool = True,
+        placeholder_background_color: QColor | None = None,
     ) -> None:
         super().__init__(
             placeholder,
@@ -540,6 +572,7 @@ class RatioPreviewPixmapLabel(PreviewPixmapLabel):
             parent,
             corner_radius=corner_radius,
             round_letterboxed_source=round_letterboxed_source,
+            placeholder_background_color=placeholder_background_color,
         )
         self._ratio_width = ratio_width
         self._ratio_height = ratio_height
@@ -582,15 +615,20 @@ class AssetVariantFrame(QFrame):
         on_select: Callable[[], None] | None = None,
         show_selection_frame: bool = True,
         is_selectable: bool = True,
+        participates_in_selection: bool = True,
+        is_add_placeholder: bool = False,
     ) -> None:
         super().__init__(parent)
         self.asset_path = path
         self.is_custom = is_custom
+        self.participates_in_selection = participates_in_selection
+        self.is_add_placeholder = is_add_placeholder
         self._on_select = on_select
         self._is_selected = False
         self._show_selection_frame = show_selection_frame
         self._show_active_frame = True
         self._is_selectable = is_selectable
+        self._is_pressed = False
         self.setObjectName("assetVariantFrame")
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
@@ -618,7 +656,32 @@ class AssetVariantFrame(QFrame):
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        if self._is_selected and self._show_active_frame:
+        inset = _ASSET_VARIANT_FRAME_PADDING - (_ASSET_INACTIVE_FRAME_WIDTH / 2)
+        rect = QRectF(self.rect()).adjusted(inset, inset, -inset, -inset)
+        if self.is_add_placeholder:
+            background_color = QColor(
+                COLORS["border"] if self.underMouse() else COLORS["button"]
+            )
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(background_color)
+            painter.drawRoundedRect(
+                rect,
+                _ASSET_VARIANT_FRAME_RADIUS,
+                _ASSET_VARIANT_FRAME_RADIUS,
+            )
+
+        if self.is_add_placeholder:
+            if self._is_selected and self._show_active_frame:
+                pen = QPen(
+                    self.palette().highlight().color(), _ASSET_ACTIVE_FRAME_WIDTH
+                )
+            elif self._is_pressed:
+                pen = QPen(QColor(COLORS["highlight"]), _ASSET_INACTIVE_FRAME_WIDTH)
+            elif self.underMouse():
+                pen = QPen(QColor(COLORS["accent"]), _ASSET_INACTIVE_FRAME_WIDTH)
+            else:
+                pen = QPen(QColor(COLORS["border_light"]), _ASSET_INACTIVE_FRAME_WIDTH)
+        elif self._is_selected and self._show_active_frame:
             pen = QPen(self.palette().highlight().color(), _ASSET_ACTIVE_FRAME_WIDTH)
         else:
             pen = QPen(self.palette().mid().color(), _ASSET_INACTIVE_FRAME_WIDTH)
@@ -633,16 +696,44 @@ class AssetVariantFrame(QFrame):
         )
         painter.end()
 
+    def enterEvent(self, event) -> None:
+        super().enterEvent(event)
+        if self.is_add_placeholder:
+            self.update()
+
+    def leaveEvent(self, event) -> None:
+        super().leaveEvent(event)
+        self._is_pressed = False
+        if self.is_add_placeholder:
+            self.update()
+
+    def mousePressEvent(self, event) -> None:
+        if (
+            self.is_add_placeholder
+            and self._is_selectable
+            and event.button() == Qt.MouseButton.LeftButton
+            and self.rect().contains(event.position().toPoint())
+        ):
+            self._is_pressed = True
+            self.update()
+        super().mousePressEvent(event)
+
     def mouseReleaseEvent(self, event) -> None:
+        was_pressed = self._is_pressed
+        self._is_pressed = False
         if (
             self._on_select is not None
             and self._is_selectable
             and event.button() == Qt.MouseButton.LeftButton
             and self.rect().contains(event.position().toPoint())
+            and (was_pressed or not self.is_add_placeholder)
         ):
             self._on_select()
+            self.update()
             event.accept()
             return
+        if self.is_add_placeholder:
+            self.update()
         super().mouseReleaseEvent(event)
 
 
@@ -721,6 +812,7 @@ class EditAssetsDialog(QDialog):
         self._scroll_area: QScrollArea | None = None
         self._asset_cards: dict[str, QWidget] = {}
         self._asset_variants: dict[str, list[AssetVariantFrame]] = {}
+        self._asset_variant_row_layouts: dict[str, QHBoxLayout] = {}
         self._asset_variant_scroll_areas: dict[str, QScrollArea] = {}
         self._asset_variant_control_rows: dict[str, QWidget] = {}
         self._asset_variant_buttons: dict[str, tuple[QToolButton, QToolButton]] = {}
@@ -996,10 +1088,9 @@ class EditAssetsDialog(QDialog):
         title_row_layout.addWidget(unapplied_label)
         title_row_layout.addStretch(1)
         layout.addWidget(title_row)
-        show_selection_frame = bool(custom_paths)
+        show_selection_frame = True
         draw_variant_frame = True
         self._asset_variant_counts[key] = 1 + len(custom_paths)
-        show_active_selection = self._asset_variant_counts[key] > 1
 
         controls_row = QWidget(card)
         controls_layout = QHBoxLayout(controls_row)
@@ -1035,8 +1126,14 @@ class EditAssetsDialog(QDialog):
         variants_layout = QHBoxLayout(variants_row)
         variants_layout.setContentsMargins(0, 0, 0, 0)
         variants_layout.setSpacing(_ASSET_VARIANT_SPACING)
+        variants_layout.setSizeConstraint(QLayout.SizeConstraint.SetFixedSize)
+        variants_row.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
         self._asset_variants[key] = []
         self._asset_variant_preview_labels[key] = []
+        self._asset_variant_row_layouts[key] = variants_layout
         self._asset_variant_sizes[key] = size
         self._asset_variant_ratios[key] = ratio
         self._asset_variant_scroll_areas[key] = variants_scroll
@@ -1057,10 +1154,7 @@ class EditAssetsDialog(QDialog):
                 path=original_path,
                 size=size,
                 ratio=ratio,
-                is_current=(
-                    show_active_selection
-                    and key not in self._selected_custom_paths_by_key
-                ),
+                is_current=key not in self._selected_custom_paths_by_key,
                 is_custom=False,
                 show_selection_frame=draw_variant_frame,
                 is_selectable=show_selection_frame,
@@ -1078,9 +1172,7 @@ class EditAssetsDialog(QDialog):
                     size=size,
                     ratio=ratio,
                     is_current=(
-                        show_active_selection
-                        and self._selected_custom_paths_by_key.get(key)
-                        == Path(custom_path)
+                        self._selected_custom_paths_by_key.get(key) == Path(custom_path)
                     ),
                     is_custom=True,
                     show_selection_frame=draw_variant_frame,
@@ -1091,7 +1183,16 @@ class EditAssetsDialog(QDialog):
                 Qt.AlignmentFlag.AlignTop,
             )
 
-        variants_layout.addStretch(1)
+        variants_layout.addWidget(
+            self._create_add_asset_variant(
+                asset_key=key,
+                size=size,
+                ratio=ratio,
+                parent=variants_row,
+            ),
+            0,
+            Qt.AlignmentFlag.AlignTop,
+        )
         variants_scroll.setWidget(variants_row)
         layout.addWidget(controls_row)
         QTimer.singleShot(
@@ -1111,15 +1212,24 @@ class EditAssetsDialog(QDialog):
         show_selection_frame: bool,
         is_selectable: bool,
         parent: QWidget,
+        on_select: Callable[[], None] | None = None,
+        placeholder_pixmap: QPixmap | None = None,
+        placeholder_background_color: QColor | None = None,
+        participates_in_selection: bool = True,
+        is_add_placeholder: bool = False,
     ) -> QWidget:
         preview_width, preview_height = size
         variant = AssetVariantFrame(
             parent,
             path=path,
             is_custom=is_custom,
-            on_select=lambda: self._select_asset_variant(asset_key, variant),
+            on_select=on_select
+            if on_select is not None
+            else lambda: self._select_asset_variant(asset_key, variant),
             show_selection_frame=show_selection_frame,
             is_selectable=is_selectable,
+            participates_in_selection=participates_in_selection,
+            is_add_placeholder=is_add_placeholder,
         )
         variant_layout = QVBoxLayout(variant)
         variant_layout.setContentsMargins(
@@ -1130,7 +1240,13 @@ class EditAssetsDialog(QDialog):
         )
         variant_layout.setSpacing(0)
 
-        preview = self._create_preview_label(asset_key, size, ratio)
+        preview = self._create_preview_label(
+            asset_key,
+            size,
+            ratio,
+            placeholder_pixmap=placeholder_pixmap,
+            placeholder_background_color=placeholder_background_color,
+        )
         if ratio is None:
             preview.setMinimumSize(preview_width, preview_height)
             preview.setMaximumHeight(preview_height)
@@ -1146,18 +1262,49 @@ class EditAssetsDialog(QDialog):
         )
         variant.set_selected(
             is_current,
-            show_active_frame=self._asset_variant_counts.get(asset_key, 0) > 1,
+            show_active_frame=participates_in_selection,
         )
         return variant
+
+    def _create_add_asset_variant(
+        self,
+        *,
+        asset_key: str,
+        size: tuple[int, int],
+        ratio: tuple[int, int] | None,
+        parent: QWidget,
+    ) -> QWidget:
+        preview_width, preview_height = size
+        return self._create_asset_variant(
+            asset_key=asset_key,
+            path="-",
+            size=size,
+            ratio=ratio,
+            is_current=False,
+            is_custom=True,
+            show_selection_frame=True,
+            is_selectable=True,
+            parent=parent,
+            on_select=lambda: self._add_asset_variant(asset_key),
+            placeholder_pixmap=self._add_asset_pixmap(
+                preview_width,
+                preview_height,
+                asset_key=asset_key,
+            ),
+            placeholder_background_color=QColor(Qt.GlobalColor.transparent),
+            participates_in_selection=False,
+            is_add_placeholder=True,
+        )
 
     def _select_asset_variant(
         self, asset_key: str, selected_variant: AssetVariantFrame
     ) -> None:
-        show_active_frame = self._asset_variant_counts.get(asset_key, 0) > 1
         for variant in self._asset_variants.get(asset_key, []):
+            if not variant.participates_in_selection:
+                continue
             variant.set_selected(
                 variant is selected_variant,
-                show_active_frame=show_active_frame,
+                show_active_frame=True,
             )
         if selected_variant.is_custom:
             self._selected_custom_paths_by_key[asset_key] = Path(
@@ -1168,6 +1315,90 @@ class EditAssetsDialog(QDialog):
             self._selected_custom_paths_by_key.pop(asset_key, None)
             self._default_selected_asset_keys.add(asset_key)
         self._refresh_unapplied_state()
+
+    def _add_asset_variant(self, asset_key: str) -> None:
+        if self._appid is None:
+            QMessageBox.warning(self, "Edit Assets", "No app id is available.")
+            return
+
+        selected_path, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "Select Asset Image",
+            str(_assets_dir() / self._appid / _custom_asset_key_name(asset_key)),
+            (
+                _CUSTOM_ICON_ASSET_IMAGE_FILTER
+                if asset_key == "icon_path"
+                else _CUSTOM_ASSET_IMAGE_FILTER
+            ),
+        )
+        if not selected_path:
+            return
+
+        source_path = Path(selected_path)
+        supported_suffixes = {".png", ".jpg", ".jpeg"}
+        if asset_key == "icon_path":
+            supported_suffixes.add(".ico")
+        if source_path.suffix.lower() not in supported_suffixes:
+            QMessageBox.warning(
+                self,
+                "Edit Assets",
+                f"Unsupported asset extension: {source_path.suffix}",
+            )
+            return
+
+        try:
+            target_path = _custom_asset_target(self._appid, asset_key, source_path)
+            _replace_with_file_copy(source_path, target_path)
+        except OSError as exc:
+            QMessageBox.critical(self, "Edit Assets", str(exc))
+            return
+
+        self._custom_assets_by_key.setdefault(asset_key, []).append(str(target_path))
+        self._insert_custom_asset_variant(asset_key, target_path)
+
+    def _insert_custom_asset_variant(self, asset_key: str, path: Path) -> None:
+        row_layout = self._asset_variant_row_layouts.get(asset_key)
+        scroll_area = self._asset_variant_scroll_areas.get(asset_key)
+        row_widget = scroll_area.widget() if scroll_area is not None else None
+        size = self._asset_variant_sizes.get(asset_key)
+        if row_layout is None or row_widget is None or size is None:
+            return
+
+        ratio = self._asset_variant_ratios.get(asset_key)
+        self._asset_variant_counts[asset_key] = (
+            self._asset_variant_counts.get(asset_key, 0) + 1
+        )
+        variant = self._create_asset_variant(
+            asset_key=asset_key,
+            path=str(path),
+            size=size,
+            ratio=ratio,
+            is_current=False,
+            is_custom=True,
+            show_selection_frame=True,
+            is_selectable=True,
+            parent=row_widget,
+        )
+        row_layout.insertWidget(
+            max(0, row_layout.count() - 1),
+            variant,
+            0,
+            Qt.AlignmentFlag.AlignTop,
+        )
+        self._resize_asset_variants(asset_key)
+        self._select_asset_variant(asset_key, variant)
+        self._finalize_asset_variant_row(asset_key)
+        QTimer.singleShot(0, lambda: self._scroll_new_asset_variant(asset_key, variant))
+
+    def _scroll_new_asset_variant(
+        self, asset_key: str, variant: AssetVariantFrame
+    ) -> None:
+        scroll_area = self._asset_variant_scroll_areas.get(asset_key)
+        if scroll_area is None:
+            return
+
+        target = variant.x() + variant.width() - scroll_area.viewport().width()
+        self._animate_asset_variant_scroll(asset_key, target)
 
     def _unapplied_asset_keys(self) -> set[str]:
         unapplied: set[str] = set()
@@ -1383,7 +1614,7 @@ class EditAssetsDialog(QDialog):
         maximum = scroll_bar.maximum()
         value = scroll_bar.value()
 
-        content_width = row_widget.sizeHint().width() if row_widget is not None else 0
+        content_width = row_widget.width() if row_widget is not None else 0
         available_width = max(0, scroll_area.viewport().contentsRect().width())
         has_overflow = content_width > available_width
 
@@ -1415,9 +1646,15 @@ class EditAssetsDialog(QDialog):
 
         row_widget = scroll_area.widget()
         if row_widget is not None:
-            target_height = row_widget.sizeHint().height()
-            scroll_area.setMinimumHeight(target_height)
-            scroll_area.setMaximumHeight(target_height)
+            row_layout = row_widget.layout()
+            if row_layout is not None:
+                row_layout.setSpacing(_ASSET_VARIANT_SPACING)
+                row_layout.invalidate()
+                row_layout.activate()
+            target_size = row_widget.sizeHint()
+            row_widget.setFixedSize(target_size)
+            scroll_area.setMinimumHeight(target_size.height())
+            scroll_area.setMaximumHeight(target_size.height())
 
         self._update_asset_variant_buttons(asset_key)
 
@@ -1465,9 +1702,16 @@ class EditAssetsDialog(QDialog):
         asset_key: str,
         size: tuple[int, int],
         ratio: tuple[int, int] | None,
+        *,
+        placeholder_pixmap: QPixmap | None = None,
+        placeholder_background_color: QColor | None = None,
     ) -> PreviewPixmapLabel:
         preview_width, preview_height = size
-        placeholder = self._missing_asset_pixmap(preview_width, preview_height)
+        placeholder = placeholder_pixmap or self._missing_asset_pixmap(
+            preview_width,
+            preview_height,
+            question_mark_scale=0.6 if asset_key == "icon_path" else 0.8,
+        )
         round_letterboxed_source = asset_key not in {"hero_path", "logo_path"}
         if ratio is not None:
             ratio_width, ratio_height = ratio
@@ -1478,6 +1722,7 @@ class EditAssetsDialog(QDialog):
                 ratio_height,
                 corner_radius=_ASSET_PREVIEW_CORNER_RADIUS,
                 round_letterboxed_source=round_letterboxed_source,
+                placeholder_background_color=placeholder_background_color,
             )
             preview.setMinimumWidth(0)
             return preview
@@ -1487,6 +1732,7 @@ class EditAssetsDialog(QDialog):
             QSize(preview_width, preview_height),
             corner_radius=_ASSET_PREVIEW_CORNER_RADIUS,
             round_letterboxed_source=round_letterboxed_source,
+            placeholder_background_color=placeholder_background_color,
         )
         return preview
 
@@ -1498,7 +1744,13 @@ class EditAssetsDialog(QDialog):
         pixmap = _load_pixmap(path)
         label.set_source_pixmap(pixmap if not pixmap.isNull() else None)
 
-    def _missing_asset_pixmap(self, width: int, height: int) -> QPixmap:
+    def _missing_asset_pixmap(
+        self,
+        width: int,
+        height: int,
+        *,
+        question_mark_scale: float = 0.8,
+    ) -> QPixmap:
         icon_size = min(width, height, 32)
         icon_color = self.palette().placeholderText().color()
         background_color = self.palette().alternateBase().color()
@@ -1517,9 +1769,31 @@ class EditAssetsDialog(QDialog):
 
         font = painter.font()
         font.setBold(True)
-        font.setPixelSize(max(12, int(icon_size * 0.8)))
+        font.setPixelSize(max(10, int(icon_size * question_mark_scale)))
         painter.setFont(font)
         painter.setPen(icon_color)
         painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "?")
+        painter.end()
+        return pixmap
+
+    def _add_asset_pixmap(self, width: int, height: int, *, asset_key: str) -> QPixmap:
+        icon_size = min(width, height, 32)
+        icon_color = self.palette().placeholderText().color()
+        pixmap = QPixmap(icon_size, icon_size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        add_icon = QIcon.fromTheme(
+            "list-add",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogNewFolder),
+        )
+        symbol_scale = 0.5 if asset_key == "icon_path" else 0.8
+        symbol_size = max(8, int(icon_size * symbol_scale))
+        symbol = _monochrome_icon_pixmap(add_icon, symbol_size, icon_color)
+        x = (pixmap.width() - symbol.width()) // 2
+        y = (pixmap.height() - symbol.height()) // 2
+        painter.drawPixmap(x, y, symbol)
         painter.end()
         return pixmap

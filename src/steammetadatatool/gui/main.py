@@ -927,7 +927,11 @@ class MainWindow(QMainWindow):
             if key in self._asset_image_specs:
                 preview_width, preview_height = self._asset_image_specs[key]
                 value_label = PreviewPixmapLabel(
-                    self._missing_asset_pixmap(preview_width, preview_height),
+                    self._missing_asset_pixmap(
+                        preview_width,
+                        preview_height,
+                        question_mark_scale=0.6 if key == "icon_path" else 1.0,
+                    ),
                 )
                 value_label.setMinimumSize(preview_width, preview_height)
                 value_label.setMaximumSize(preview_width, preview_height)
@@ -1450,14 +1454,26 @@ class MainWindow(QMainWindow):
 
         if path in {"", "-"}:
             preview_width, preview_height = self._asset_image_specs[key]
-            label.setPixmap(self._missing_asset_pixmap(preview_width, preview_height))
+            label.setPixmap(
+                self._missing_asset_pixmap(
+                    preview_width,
+                    preview_height,
+                    question_mark_scale=0.62 if key == "icon_path" else 0.8,
+                )
+            )
             label.setText("")
             return
 
         pixmap = self._cached_pixmap(path)
         if pixmap.isNull():
             preview_width, preview_height = self._asset_image_specs[key]
-            label.setPixmap(self._missing_asset_pixmap(preview_width, preview_height))
+            label.setPixmap(
+                self._missing_asset_pixmap(
+                    preview_width,
+                    preview_height,
+                    question_mark_scale=0.62 if key == "icon_path" else 0.8,
+                )
+            )
             label.setText("")
             return
 
@@ -1603,7 +1619,13 @@ class MainWindow(QMainWindow):
         painter.end()
         return composed
 
-    def _missing_asset_pixmap(self, width: int, height: int) -> QPixmap:
+    def _missing_asset_pixmap(
+        self,
+        width: int,
+        height: int,
+        *,
+        question_mark_scale: float = 0.8,
+    ) -> QPixmap:
         icon_size = min(width, height, 32)
         icon_color = self.palette().placeholderText().color()
         background_color = self.palette().alternateBase().color()
@@ -1622,7 +1644,7 @@ class MainWindow(QMainWindow):
 
         font = painter.font()
         font.setBold(True)
-        font.setPixelSize(max(12, int(icon_size * 0.8)))
+        font.setPixelSize(max(10, int(icon_size * question_mark_scale)))
         painter.setFont(font)
         painter.setPen(icon_color)
         painter.drawText(pixmap.rect(), Qt.AlignmentFlag.AlignCenter, "?")
