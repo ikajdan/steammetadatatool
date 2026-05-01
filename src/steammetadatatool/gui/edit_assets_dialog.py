@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Callable
 
@@ -97,6 +100,14 @@ _STEAM_GRID_BASENAME_SUFFIXES = {
     "logo_path": "_logo",
 }
 _STEAM_GRID_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+_APPIMAGE_EXTERNAL_ENV_KEYS = (
+    "APPDIR",
+    "APPIMAGE",
+    "ARGV0",
+    "QT_PLUGIN_PATH",
+    "QT_QPA_PLATFORM_PLUGIN_PATH",
+    "QML2_IMPORT_PATH",
+)
 
 
 def _load_pixmap(path: str | Path) -> QPixmap:
@@ -120,6 +131,54 @@ def _assets_manifest_path() -> Path:
 
 def _assets_dir() -> Path:
     return app_data_path("assets")
+
+
+def _external_desktop_environment() -> dict[str, str]:
+    env = os.environ.copy()
+    original_ld_library_path = env.pop("ORIGINAL_LD_LIBRARY_PATH", None)
+    if original_ld_library_path:
+        env["LD_LIBRARY_PATH"] = original_ld_library_path
+    else:
+        env.pop("LD_LIBRARY_PATH", None)
+
+    appdir = env.get("APPDIR")
+    for key in _APPIMAGE_EXTERNAL_ENV_KEYS:
+        env.pop(key, None)
+
+    if appdir:
+        xdg_data_dirs = env.get("XDG_DATA_DIRS")
+        if xdg_data_dirs:
+            filtered_xdg_data_dirs = ":".join(
+                path
+                for path in xdg_data_dirs.split(":")
+                if path and not path.startswith(f"{appdir}/")
+            )
+            if filtered_xdg_data_dirs:
+                env["XDG_DATA_DIRS"] = filtered_xdg_data_dirs
+            else:
+                env.pop("XDG_DATA_DIRS", None)
+
+    return env
+
+
+def _open_local_directory(path: Path) -> bool:
+    if sys.platform.startswith("linux") and (
+        os.environ.get("APPIMAGE") or os.environ.get("APPDIR")
+    ):
+        try:
+            subprocess.Popen(
+                ["xdg-open", str(path)],
+                env=_external_desktop_environment(),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError:
+            pass
+        else:
+            return True
+
+    return QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
 
 
 def _custom_asset_key_name(asset_key: str) -> str:
@@ -1170,7 +1229,7 @@ class EditAssetsDialog(QDialog):
             QMessageBox.critical(self, "Edit Assets", str(exc))
             return
 
-        did_open = QDesktopServices.openUrl(QUrl.fromLocalFile(str(app_assets_dir)))
+        did_open = _open_local_directory(app_assets_dir)
         if not did_open:
             QMessageBox.warning(
                 self,
