@@ -8,7 +8,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from PySide6.QtCore import QEvent, QRectF, QSize, Qt, QVariantAnimation
+from PySide6.QtCore import (
+    QEvent,
+    QObject,
+    QRectF,
+    QSize,
+    Qt,
+    QThread,
+    QTimer,
+    QVariantAnimation,
+    Signal,
+    Slot,
+)
 from PySide6.QtGui import (
     QColor,
     QIcon,
@@ -30,6 +41,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
+    QStackedLayout,
     QStyle,
     QStyledItemDelegate,
     QTableWidget,
@@ -522,8 +534,156 @@ class LeftPaddingItemDelegate(QStyledItemDelegate):
         option.rect.adjust(self._left_padding, 0, 0, 0)
 
 
+class LoadingSpinner(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._angle = 0
+        self._timer = QTimer(self)
+        self._timer.setInterval(80)
+        self._timer.timeout.connect(self._advance)
+        self.setFixedSize(48, 48)
+
+    def start(self) -> None:
+        self._angle = 0
+        self._timer.start()
+        self.update()
+
+    def stop(self) -> None:
+        self._timer.stop()
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.translate(self.width() / 2, self.height() / 2)
+        painter.rotate(self._angle)
+
+        color = self.palette().midlight().color()
+        pen = QPen(color, 3)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+
+        radius = min(self.width(), self.height()) / 2 - 8
+        for index in range(12):
+            color.setAlpha(40 + index * 16)
+            pen.setColor(color)
+            painter.setPen(pen)
+            painter.drawLine(0, int(-radius), 0, int(-radius + 8))
+            painter.rotate(30)
+
+        painter.end()
+
+    def _advance(self) -> None:
+        self._angle = (self._angle + 30) % 360
+        self.update()
+
+
+class ListLoadingOverlay(QWidget):
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setAutoFillBackground(False)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(18)
+        layout.addStretch(1)
+
+        self._spinner = LoadingSpinner(self)
+        layout.addWidget(self._spinner, 0, Qt.AlignmentFlag.AlignCenter)
+
+        text = QLabel("Loading apps...", self)
+        text.setAutoFillBackground(False)
+        text.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        text.setStyleSheet("color: palette(midlight);")
+        layout.addWidget(text, 0, Qt.AlignmentFlag.AlignCenter)
+        layout.addStretch(1)
+
+    def start(self) -> None:
+        self.show()
+        self.raise_()
+        self._spinner.start()
+
+    def stop(self) -> None:
+        self._spinner.stop()
+        self.hide()
+
+
+def _details_for_app(app: Any) -> dict[str, Any]:
+    name = (app.name or "").strip()
+    asset_paths = asset_paths_for_app(app.appid)
+    return {
+        "_raw_metadata": app.data,
+        "appid": str(app.appid),
+        "name": name or "–",
+        "sort_as": str(_sort_as_value(app.data) or "–"),
+        "aliases": _format_aliases(_aliases_value(app.data)),
+        "developer": str(_extended_value(app.data, "developer") or "–"),
+        "publisher": str(_extended_value(app.data, "publisher") or "–"),
+        "original_release_date": _format_release_date(
+            _common_value(app.data, "original_release_date")
+        ),
+        "steam_release_date": _format_release_date(
+            _common_value(app.data, "steam_release_date")
+        ),
+        "header_path": asset_paths["header_path"],
+        "capsule_path": asset_paths["capsule_path"],
+        "hero_path": asset_paths["hero_path"],
+        "logo_path": asset_paths["logo_path"],
+        "logo_position": _library_logo_position(app.data),
+        "icon_path": asset_paths["icon_path"],
+    }
+
+
+def _read_app_rows(
+    path: Path,
+) -> tuple[list[tuple[int, str]], dict[int, dict[str, Any]], dict[int, bool]]:
+    rows: list[tuple[int, str]] = []
+    details_by_appid: dict[int, dict[str, Any]] = {}
+    filter_matches_by_appid: dict[int, bool] = {}
+
+    with AppInfoFile.open(path) as appinfo:
+        for app in appinfo.iter_apps():
+            name = (app.name or "").strip()
+            if not name:
+                continue
+
+            rows.append((app.appid, name))
+            filter_matches_by_appid[app.appid] = _matches_game_filter(app.data)
+            details_by_appid[app.appid] = _details_for_app(app)
+
+    return rows, details_by_appid, filter_matches_by_appid
+
+
+class AppLoadWorker(QObject):
+    loaded = Signal(object)
+    failed = Signal(str)
+    finished = Signal()
+
+    def __init__(self, path: str) -> None:
+        super().__init__()
+        self._path = path
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            path_obj = Path(self._path).expanduser()
+            if not path_obj.exists():
+                raise FileNotFoundError(f"File does not exist:\n{path_obj}")
+
+            rows, details_by_appid, filter_matches_by_appid = _read_app_rows(path_obj)
+            self.loaded.emit(
+                (path_obj, rows, details_by_appid, filter_matches_by_appid)
+            )
+        except Exception as exc:
+            self.failed.emit(str(exc))
+        finally:
+            self.finished.emit()
+
+
 class MainWindow(QMainWindow):
-    def __init__(self, initial_path: str | None = None) -> None:
+    def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("SteamMetadataTool")
         self.resize(1200, 560)
@@ -531,6 +691,8 @@ class MainWindow(QMainWindow):
 
         self._details_by_appid: dict[int, dict[str, Any]] = {}
         self._appinfo_path: Path | None = None
+        self._load_thread: QThread | None = None
+        self._load_worker: AppLoadWorker | None = None
         self._detail_labels: dict[str, QLabel] = {}
         self._asset_image_labels: dict[str, QLabel] = {}
         self._asset_boxes: dict[str, QWidget] = {}
@@ -538,6 +700,7 @@ class MainWindow(QMainWindow):
         self._assets_separator: QFrame | None = None
         self._assets_widget: QWidget | None = None
         self._filter_matches_by_appid: dict[int, bool] = {}
+        self._list_loading_overlay: ListLoadingOverlay | None = None
         self._pixmap_cache: dict[str, QPixmap] = {}
         self._composited_hero_cache: dict[tuple[str, str, str], QPixmap] = {}
         self._asset_image_specs: dict[str, tuple[int, int]] = {
@@ -638,7 +801,18 @@ class MainWindow(QMainWindow):
         search_row_layout.addWidget(self._search_input, 1)
         search_row_layout.addWidget(self._filter_button, 0)
 
-        list_layout.addWidget(self._table)
+        table_stack = QWidget()
+        table_stack_layout = QStackedLayout(table_stack)
+        table_stack_layout.setContentsMargins(0, 0, 0, 0)
+        table_stack_layout.setStackingMode(QStackedLayout.StackingMode.StackAll)
+        table_stack_layout.addWidget(self._table)
+
+        list_loading_overlay = ListLoadingOverlay(table_stack)
+        list_loading_overlay.hide()
+        self._list_loading_overlay = list_loading_overlay
+        table_stack_layout.addWidget(list_loading_overlay)
+
+        list_layout.addWidget(table_stack)
 
         details_widget = QWidget()
         details_widget.setMinimumWidth(500)
@@ -742,7 +916,7 @@ class MainWindow(QMainWindow):
                 )
                 self._asset_image_labels[key] = value_label
             else:
-                value_label = QLabel("-")
+                value_label = QLabel("–")
                 value_label.setMinimumWidth(280)
                 value_label.setAlignment(
                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
@@ -909,9 +1083,7 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(details_panel, 4)
         root_layout.addLayout(content_layout, 1)
         self.setCentralWidget(root)
-
-        if initial_path:
-            self._load_apps(initial_path)
+        self._set_details(None)
 
     def _open_edit_metadata_dialog(self) -> None:
         appid = self._current_selected_appid()
@@ -1005,6 +1177,56 @@ class MainWindow(QMainWindow):
         )
         dialog.exec()
 
+    def _load_apps_async(self, path: str) -> None:
+        if self._load_thread is not None:
+            return
+
+        self._table.setRowCount(0)
+        self._set_details(None)
+        self._search_input.setEnabled(False)
+        self._filter_button.setEnabled(False)
+        self._table.setEnabled(False)
+        if self._list_loading_overlay is not None:
+            self._list_loading_overlay.start()
+
+        thread = QThread(self)
+        worker = AppLoadWorker(path)
+        worker.moveToThread(thread)
+        self._load_thread = thread
+        self._load_worker = worker
+
+        thread.started.connect(worker.run)
+        worker.loaded.connect(self._apply_loaded_apps)
+        worker.failed.connect(self._show_load_error)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(self._finish_async_load)
+        thread.finished.connect(thread.deleteLater)
+        thread.start()
+
+    @Slot(object)
+    def _apply_loaded_apps(self, payload: object) -> None:
+        path_obj, rows, details_by_appid, filter_matches_by_appid = payload
+        self._apply_loaded_app_rows(
+            path_obj,
+            rows,
+            details_by_appid,
+            filter_matches_by_appid,
+        )
+
+    @Slot(str)
+    def _show_load_error(self, message: str) -> None:
+        QMessageBox.critical(self, "SteamMetadataTool", message)
+
+    def _finish_async_load(self) -> None:
+        self._search_input.setEnabled(True)
+        self._filter_button.setEnabled(True)
+        self._table.setEnabled(True)
+        if self._list_loading_overlay is not None:
+            self._list_loading_overlay.stop()
+        self._load_thread = None
+        self._load_worker = None
+
     def _load_apps(self, path: str) -> None:
         path_obj = Path(path).expanduser()
         if not path_obj.exists():
@@ -1016,24 +1238,25 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            rows: list[tuple[int, str]] = []
-            details_by_appid: dict[int, dict[str, Any]] = {}
-            filter_matches_by_appid: dict[int, bool] = {}
-
-            with AppInfoFile.open(path_obj) as appinfo:
-                for app in appinfo.iter_apps():
-                    name = (app.name or "").strip()
-                    if not name:
-                        continue
-
-                    rows.append((app.appid, name))
-                    filter_matches_by_appid[app.appid] = _matches_game_filter(app.data)
-
-                    details_by_appid[app.appid] = self._details_for_app(app)
+            rows, details_by_appid, filter_matches_by_appid = _read_app_rows(path_obj)
         except Exception as exc:
             QMessageBox.critical(self, "SteamMetadataTool", str(exc))
             return
 
+        self._apply_loaded_app_rows(
+            path_obj,
+            rows,
+            details_by_appid,
+            filter_matches_by_appid,
+        )
+
+    def _apply_loaded_app_rows(
+        self,
+        path_obj: Path,
+        rows: list[tuple[int, str]],
+        details_by_appid: dict[int, dict[str, Any]],
+        filter_matches_by_appid: dict[int, bool],
+    ) -> None:
         self._appinfo_path = path_obj
         self._details_by_appid = details_by_appid
         self._filter_matches_by_appid = filter_matches_by_appid
@@ -1059,7 +1282,7 @@ class MainWindow(QMainWindow):
 
         with AppInfoFile.open(self._appinfo_path) as appinfo:
             for app in appinfo.iter_apps(appids=[appid]):
-                details = self._details_for_app(app)
+                details = _details_for_app(app)
                 self._details_by_appid[appid] = details
                 self._filter_matches_by_appid[appid] = _matches_game_filter(app.data)
                 self._update_table_row_for_app(appid, str(details.get("name", "–")))
@@ -1069,31 +1292,6 @@ class MainWindow(QMainWindow):
                 return
 
         raise ValueError(f"Could not reload app {appid} from appinfo.vdf.")
-
-    def _details_for_app(self, app: Any) -> dict[str, Any]:
-        name = (app.name or "").strip()
-        asset_paths = asset_paths_for_app(app.appid)
-        return {
-            "_raw_metadata": app.data,
-            "appid": str(app.appid),
-            "name": name or "–",
-            "sort_as": str(_sort_as_value(app.data) or "–"),
-            "aliases": _format_aliases(_aliases_value(app.data)),
-            "developer": str(_extended_value(app.data, "developer") or "–"),
-            "publisher": str(_extended_value(app.data, "publisher") or "–"),
-            "original_release_date": _format_release_date(
-                _common_value(app.data, "original_release_date")
-            ),
-            "steam_release_date": _format_release_date(
-                _common_value(app.data, "steam_release_date")
-            ),
-            "header_path": asset_paths["header_path"],
-            "capsule_path": asset_paths["capsule_path"],
-            "hero_path": asset_paths["hero_path"],
-            "logo_path": asset_paths["logo_path"],
-            "logo_position": _library_logo_position(app.data),
-            "icon_path": asset_paths["icon_path"],
-        }
 
     def _update_table_row_for_app(self, appid: int, name: str) -> None:
         for row in range(self._table.rowCount()):
@@ -1134,7 +1332,8 @@ class MainWindow(QMainWindow):
     def _set_details(self, details: dict[str, Any] | None) -> None:
         self._set_capsule_preview((details or {}).get("capsule_path", "-"))
         for key, label in self._detail_labels.items():
-            label.setText((details or {}).get(key, "-"))
+            fallback = "-" if key in self._asset_image_specs else "–"
+            label.setText((details or {}).get(key, fallback))
 
         any_assets_visible = False
         for key in ("header_path", "hero_path"):
@@ -1475,8 +1674,10 @@ def main() -> int:
     app.setApplicationDisplayName("SteamMetadataTool")
     app.setDesktopFileName("io.github.ikajdan.steammetadatatool")
     apply_theme(app)
-    window = MainWindow(initial_path)
+    window = MainWindow()
     window.show()
+    if initial_path:
+        QTimer.singleShot(0, lambda: window._load_apps_async(initial_path))
     return app.exec()
 
 
