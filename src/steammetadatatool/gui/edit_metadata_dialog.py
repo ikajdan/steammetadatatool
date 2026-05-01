@@ -7,7 +7,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QEvent, QRect, QSize, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QDialog,
@@ -19,6 +19,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QStyle,
+    QStyledItemDelegate,
+    QStyleOptionViewItem,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -150,6 +152,67 @@ class ElidedLabel(QLabel):
         )
 
 
+class RevertMetadataValueDelegate(QStyledItemDelegate):
+    def __init__(
+        self,
+        revert_icon: QIcon,
+        should_show_revert: Callable[[str, str], bool],
+        revert_entry: Callable[[str], None],
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._revert_icon = revert_icon
+        self._should_show_revert = should_show_revert
+        self._revert_entry = revert_entry
+
+    def paint(self, painter, option, index) -> None:
+        key = self._key_for_index(index)
+        value = index.data(Qt.ItemDataRole.DisplayRole)
+        if key is None or not self._should_show_revert(key, str(value or "")):
+            super().paint(painter, option, index)
+            return
+
+        text_option = QStyleOptionViewItem(option)
+        text_option.rect = option.rect.adjusted(0, 0, -32, 0)
+        super().paint(painter, text_option, index)
+        self._revert_icon.paint(
+            painter,
+            self._revert_icon_rect(option.rect),
+            Qt.AlignmentFlag.AlignCenter,
+        )
+
+    def editorEvent(self, event, model, option, index) -> bool:
+        if event.type() != QEvent.Type.MouseButtonRelease:
+            return super().editorEvent(event, model, option, index)
+        if event.button() != Qt.MouseButton.LeftButton:
+            return super().editorEvent(event, model, option, index)
+        if not self._revert_icon_rect(option.rect).contains(event.position().toPoint()):
+            return super().editorEvent(event, model, option, index)
+
+        key = self._key_for_index(index)
+        value = index.data(Qt.ItemDataRole.DisplayRole)
+        if key is None or not self._should_show_revert(key, str(value or "")):
+            return super().editorEvent(event, model, option, index)
+
+        self._revert_entry(key)
+        return True
+
+    def _key_for_index(self, index) -> str | None:
+        key_index = index.sibling(index.row(), 0)
+        key = key_index.data(Qt.ItemDataRole.DisplayRole)
+        return str(key) if key is not None else None
+
+    def _revert_icon_rect(self, cell_rect) -> QRect:
+        size = 24
+        margin = 4
+        return QRect(
+            cell_rect.right() - size - margin + 1,
+            cell_rect.top() + max(0, int((cell_rect.height() - size) / 2)),
+            size,
+            size,
+        )
+
+
 class EditMetadataDialog(QDialog):
     def __init__(
         self,
@@ -176,11 +239,22 @@ class EditMetadataDialog(QDialog):
         self._appid = appid
         self._on_save = on_save
         self._original_entries = dict(entries)
+        self._default_entries = dict(entries)
         self._saved_change_keys: set[str] = set()
         self._saved_entries = self._entries_with_saved_changes(dict(entries))
         self._search_text = ""
         self._apply_button: QPushButton | None = None
         action_icon_color = self.palette().placeholderText().color()
+        self._revert_icon = QIcon(
+            _monochrome_icon_pixmap(
+                QIcon.fromTheme(
+                    "edit-undo",
+                    self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowBack),
+                ),
+                16,
+                action_icon_color,
+            )
+        )
         readonly_text_color = self.palette().placeholderText().color()
 
         dialog_layout = QVBoxLayout(self)
@@ -241,6 +315,15 @@ class EditMetadataDialog(QDialog):
         )
         metadata_table.horizontalHeader().setSectionResizeMode(
             1, QHeaderView.ResizeMode.Fixed
+        )
+        metadata_table.setItemDelegateForColumn(
+            1,
+            RevertMetadataValueDelegate(
+                self._revert_icon,
+                self._should_show_revert_for_key,
+                self._revert_entry,
+                metadata_table,
+            ),
         )
 
         for row, (key, value) in enumerate(self._saved_entries.items()):
@@ -354,6 +437,10 @@ class EditMetadataDialog(QDialog):
                 if not isinstance(key, str) or "new_value" not in change:
                     continue
 
+                if "old_value" in change:
+                    self._default_entries[key] = _format_metadata_value(
+                        change["old_value"]
+                    )
                 self._saved_change_keys.add(key)
                 saved_entries[key] = _format_metadata_value(change["new_value"])
 
@@ -427,12 +514,8 @@ class EditMetadataDialog(QDialog):
                     if not isinstance(item, dict)
                     or str(item.get("key")) not in self._original_entries
                     or str(item.get("key")) in changed_keys_to_save
-                    or (
-                        current_entries.get(str(item.get("key")))
-                        == _format_metadata_value(item.get("new_value"))
-                        and current_entries.get(str(item.get("key")))
-                        != self._original_entries.get(str(item.get("key")), "")
-                    )
+                    or current_entries.get(str(item.get("key")))
+                    == _format_metadata_value(item.get("new_value"))
                 ]
                 existing_changes_by_key = {
                     str(item.get("key")): item
@@ -484,6 +567,7 @@ class EditMetadataDialog(QDialog):
             return
 
         self._original_entries = dict(current_entries)
+        self._default_entries = dict(current_entries)
         self._saved_change_keys = self._saved_change_keys_from_payload(existing_payload)
         self._saved_entries = self._entries_with_saved_changes(
             dict(self._original_entries)
@@ -531,6 +615,7 @@ class EditMetadataDialog(QDialog):
             return
 
         self._set_unsaved_change_style(item, key_item.text())
+        self._metadata_table.viewport().update()
         self._refresh_apply_button_state()
 
     def _refresh_unsaved_change_styles(self) -> None:
@@ -540,6 +625,7 @@ class EditMetadataDialog(QDialog):
             if key_item is None or value_item is None:
                 continue
             self._set_unsaved_change_style(value_item, key_item.text())
+        self._metadata_table.viewport().update()
         self._refresh_apply_button_state()
 
     def _has_unsaved_changes(self) -> bool:
@@ -552,6 +638,33 @@ class EditMetadataDialog(QDialog):
     def _refresh_apply_button_state(self) -> None:
         if self._apply_button is not None:
             self._apply_button.setEnabled(self._has_unsaved_changes())
+
+    def _revert_entry(self, key: str) -> None:
+        value_item = self._value_item_for_key(key)
+        if value_item is None:
+            return
+        value_item.setText(
+            self._default_entries.get(key, self._original_entries.get(key, ""))
+        )
+
+    def _value_item_for_key(self, key: str) -> QTableWidgetItem | None:
+        row = self._row_for_key(key)
+        if row is not None:
+            return self._metadata_table.item(row, 1)
+        return None
+
+    def _row_for_key(self, key: str) -> int | None:
+        for row in range(self._metadata_table.rowCount()):
+            key_item = self._metadata_table.item(row, 0)
+            if key_item is not None and key_item.text() == key:
+                return row
+        return None
+
+    def _should_show_revert_for_key(self, key: str, value: str) -> bool:
+        default_value = self._default_entries.get(
+            key, self._original_entries.get(key, "")
+        )
+        return value != default_value
 
     def _set_unsaved_change_style(self, item: QTableWidgetItem, key: str) -> None:
         font = item.font()
@@ -587,6 +700,7 @@ class EditMetadataDialog(QDialog):
             self._metadata_table.setRowHidden(row, not matches)
 
         self._select_first_visible_row()
+        self._metadata_table.viewport().update()
 
     def _apply_column_ratio(self) -> None:
         viewport_width = self._metadata_table.viewport().width()
