@@ -11,6 +11,7 @@ from typing import Any, Callable
 from PySide6.QtCore import (
     QEvent,
     QObject,
+    QPoint,
     QRectF,
     QSize,
     Qt,
@@ -242,6 +243,7 @@ class PreviewPixmapLabel(QLabel):
         corner_radius: float = 0.0,
         show_placeholder_frame: bool = True,
         show_inactive_border: bool = False,
+        pixmap_alignment: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignCenter,
     ) -> None:
         super().__init__(parent)
         self._source_pixmap: QPixmap | None = None
@@ -259,7 +261,7 @@ class PreviewPixmapLabel(QLabel):
         self._overlay_animation.setStartValue(0.0)
         self._overlay_animation.setEndValue(1.0)
         self._overlay_animation.valueChanged.connect(self._on_overlay_opacity_changed)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setAlignment(pixmap_alignment)
         self.setFrameShape(
             QFrame.Shape.StyledPanel
             if self._show_placeholder_frame
@@ -359,10 +361,7 @@ class PreviewPixmapLabel(QLabel):
             return
 
         pixmap_rect = pixmap.rect()
-        pixmap_rect.moveTo(
-            (self.width() - pixmap.width()) // 2,
-            (self.height() - pixmap.height()) // 2,
-        )
+        pixmap_rect.moveTo(self._pixmap_top_left(pixmap))
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -396,10 +395,7 @@ class PreviewPixmapLabel(QLabel):
             return
 
         pixmap_rect = QRectF(pixmap.rect())
-        pixmap_rect.moveTo(
-            (self.width() - pixmap.width()) / 2,
-            (self.height() - pixmap.height()) / 2,
-        )
+        pixmap_rect.moveTo(self._pixmap_top_left(pixmap))
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -416,6 +412,24 @@ class PreviewPixmapLabel(QLabel):
         else:
             painter.drawRect(border_rect)
         painter.end()
+
+    def _pixmap_top_left(self, pixmap: QPixmap) -> QPoint:
+        alignment = self.alignment()
+        if alignment & Qt.AlignmentFlag.AlignLeft:
+            x = 0
+        elif alignment & Qt.AlignmentFlag.AlignRight:
+            x = self.width() - pixmap.width()
+        else:
+            x = (self.width() - pixmap.width()) // 2
+
+        if alignment & Qt.AlignmentFlag.AlignTop:
+            y = 0
+        elif alignment & Qt.AlignmentFlag.AlignBottom:
+            y = self.height() - pixmap.height()
+        else:
+            y = (self.height() - pixmap.height()) // 2
+
+        return QPoint(x, y)
 
     def _refresh_pixmap(self) -> None:
         pixmap = self._source_pixmap or self._placeholder_pixmap
@@ -500,6 +514,7 @@ class RatioPreviewPixmapLabel(PreviewPixmapLabel):
         corner_radius: float = 0.0,
         show_placeholder_frame: bool = True,
         show_inactive_border: bool = False,
+        pixmap_alignment: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignCenter,
     ) -> None:
         super().__init__(
             placeholder,
@@ -507,6 +522,7 @@ class RatioPreviewPixmapLabel(PreviewPixmapLabel):
             corner_radius=corner_radius,
             show_placeholder_frame=show_placeholder_frame,
             show_inactive_border=show_inactive_border,
+            pixmap_alignment=pixmap_alignment,
         )
         self._ratio_width = ratio_width
         self._ratio_height = ratio_height
@@ -953,6 +969,7 @@ class MainWindow(QMainWindow):
             ratio_width: int | None,
             ratio_height: int | None,
             corner_radius: float,
+            pixmap_alignment: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignCenter,
         ) -> QWidget:
             asset_box = QWidget()
             asset_box_layout = QVBoxLayout(asset_box)
@@ -971,6 +988,7 @@ class MainWindow(QMainWindow):
                     ratio_height,
                     corner_radius=corner_radius,
                     show_inactive_border=True,
+                    pixmap_alignment=pixmap_alignment,
                 )
                 preview_label.setMinimumWidth(0)
             else:
@@ -978,6 +996,7 @@ class MainWindow(QMainWindow):
                     self._missing_asset_pixmap(preview_width, preview_height),
                     corner_radius=corner_radius,
                     show_inactive_border=True,
+                    pixmap_alignment=pixmap_alignment,
                 )
                 preview_label.setMinimumSize(preview_width, preview_height)
                 preview_label.setMaximumSize(preview_width, preview_height)
@@ -1002,7 +1021,15 @@ class MainWindow(QMainWindow):
         assets_layout.addWidget(header_box, 0, Qt.AlignmentFlag.AlignTop)
 
         assets_layout.addWidget(
-            create_asset_box("hero_path", "Hero", (384, 124), 96, 31, 16)
+            create_asset_box(
+                "hero_path",
+                "Hero",
+                (384, 124),
+                96,
+                31,
+                16,
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            )
         )
 
         assets_layout.addStretch(1)
