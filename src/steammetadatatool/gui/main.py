@@ -66,6 +66,7 @@ from steammetadatatool.core.services import (
 )
 from steammetadatatool.gui.app_data import app_data_path
 from steammetadatatool.gui.app_theme import apply_theme
+from steammetadatatool.gui.asset_optimizer import run_asset_optimization_prompt
 from steammetadatatool.gui.edit_assets_dialog import EditAssetsDialog
 from steammetadatatool.gui.edit_metadata_dialog import EditMetadataDialog
 from steammetadatatool.gui.steam_user import asset_paths_for_app
@@ -1684,11 +1685,19 @@ def main() -> int:
         version=f"%(prog)s {__version__}",
     )
     parser.add_argument(
+        "--optimize-assets",
+        action="store_true",
+        help=("Resize custom asset files to the minimum required dimensions"),
+    )
+    parser.add_argument(
         "path",
         nargs="?",
         help="Path to appinfo.vdf (defaults to auto-detected Steam install)",
     )
     args = parser.parse_args()
+
+    if args.optimize_assets:
+        return run_asset_optimization_prompt()
 
     initial_path = args.path
     if not initial_path:
