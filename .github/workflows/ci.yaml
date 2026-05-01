@@ -73,8 +73,8 @@ jobs:
 
       - name: Build AppImage
         env:
-          APP_VERSION: ${{ startsWith(github.ref_name, 'v') && github.ref_name || format('v{0}', github.ref_name) }}
-        run: ./tools/build-appimage.sh
+          APP_VERSION: ${{ github.ref_name }}
+        run: APP_VERSION="${APP_VERSION#v}" ./tools/build-appimage.sh
 
       - name: Upload AppImage to release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3.0.0
