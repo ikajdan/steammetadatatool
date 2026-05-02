@@ -258,6 +258,7 @@ class PreviewPixmapLabel(QLabel):
         self._show_inactive_border = show_inactive_border
         self._hovered = False
         self._click_handler: Callable[[], None] | None = None
+        self._click_enabled = True
         self._show_click_overlay = False
         self._overlay_icon = QIcon()
         self._overlay_opacity = 0.0
@@ -289,15 +290,28 @@ class PreviewPixmapLabel(QLabel):
         self._show_click_overlay = handler is not None and show_overlay
         if overlay_icon is not None:
             self._overlay_icon = overlay_icon
-        if not self._show_click_overlay:
+        if not self._show_click_overlay or not self._click_enabled:
             self._overlay_animation.stop()
             self._overlay_opacity = 0.0
+        self._refresh_cursor()
+        self.update()
+
+    def set_click_enabled(self, enabled: bool) -> None:
+        self._click_enabled = enabled
+        if not enabled:
+            self._overlay_animation.stop()
+            self._overlay_opacity = 0.0
+        elif self._hovered:
+            self._animate_overlay(visible=True)
+        self._refresh_cursor()
+        self.update()
+
+    def _refresh_cursor(self) -> None:
         self.setCursor(
             Qt.CursorShape.PointingHandCursor
-            if handler is not None
+            if self._click_handler is not None and self._click_enabled
             else Qt.CursorShape.ArrowCursor
         )
-        self.update()
 
     def _on_overlay_opacity_changed(self, value) -> None:
         try:
@@ -329,7 +343,7 @@ class PreviewPixmapLabel(QLabel):
         super().leaveEvent(event)
 
     def _animate_overlay(self, *, visible: bool) -> None:
-        if not self._show_click_overlay:
+        if not self._show_click_overlay or not self._click_enabled:
             self._overlay_opacity = 0.0
             self._overlay_animation.stop()
             self.update()
@@ -343,6 +357,7 @@ class PreviewPixmapLabel(QLabel):
     def mouseReleaseEvent(self, event) -> None:
         if (
             self._click_handler is not None
+            and self._click_enabled
             and event.button() == Qt.MouseButton.LeftButton
             and self.rect().contains(event.position().toPoint())
         ):
@@ -356,6 +371,7 @@ class PreviewPixmapLabel(QLabel):
         self._paint_inactive_border()
         if (
             self._click_handler is None
+            or not self._click_enabled
             or not self._show_click_overlay
             or self._overlay_opacity <= 0.0
         ):
@@ -720,6 +736,8 @@ class MainWindow(QMainWindow):
         self._assets_heading: QLabel | None = None
         self._assets_separator: QFrame | None = None
         self._assets_widget: QWidget | None = None
+        self._appinfo_required_widgets: list[QWidget] = []
+        self._appinfo_required_preview_labels: list[PreviewPixmapLabel] = []
         self._filter_matches_by_appid: dict[int, bool] = {}
         self._list_loading_overlay: ListLoadingOverlay | None = None
         self._pixmap_cache: dict[str, QPixmap] = {}
@@ -787,6 +805,7 @@ class MainWindow(QMainWindow):
         self._filter_button.toggled.connect(
             lambda _checked: self._apply_table_filter(self._search_input.text())
         )
+        self._appinfo_required_widgets.append(self._filter_button)
 
         self._table = QTableWidget(0, 2)
         self._table.setHorizontalHeaderLabels(["App ID", "Name"])
@@ -872,6 +891,7 @@ class MainWindow(QMainWindow):
         )
         capsule_layout.setStretch(0, 1)
         self._capsule_preview.setMinimumWidth(220)
+        self._appinfo_required_preview_labels.append(self._capsule_preview)
         details_content_layout.addWidget(
             capsule_container, 0, Qt.AlignmentFlag.AlignTop
         )
@@ -939,6 +959,7 @@ class MainWindow(QMainWindow):
                     lambda asset_key=key: self._open_edit_assets_dialog(asset_key),
                     show_overlay=False,
                 )
+                self._appinfo_required_preview_labels.append(value_label)
                 self._asset_image_labels[key] = value_label
             else:
                 value_label = QLabel("–")
@@ -1016,6 +1037,7 @@ class MainWindow(QMainWindow):
                 lambda asset_key=key: self._open_edit_assets_dialog(asset_key),
                 self._edit_overlay_icon,
             )
+            self._appinfo_required_preview_labels.append(preview_label)
             asset_box_layout.addWidget(preview_label)
             return asset_box
 
@@ -1095,6 +1117,7 @@ class MainWindow(QMainWindow):
         edit_metadata_button.setMinimumHeight(40)
         edit_metadata_button.setIconSize(QSize(24, 24))
         edit_metadata_button.clicked.connect(self._open_edit_metadata_dialog)
+        self._appinfo_required_widgets.append(edit_metadata_button)
         actions_layout.addWidget(edit_metadata_button)
 
         assets_icon = QIcon.fromTheme(
@@ -1112,6 +1135,7 @@ class MainWindow(QMainWindow):
         edit_assets_button.setMinimumHeight(40)
         edit_assets_button.setIconSize(QSize(24, 24))
         edit_assets_button.clicked.connect(self._open_edit_assets_dialog)
+        self._appinfo_required_widgets.append(edit_assets_button)
         actions_layout.addWidget(edit_assets_button)
 
         details_panel_layout.addWidget(actions_container, 0)
@@ -1120,6 +1144,7 @@ class MainWindow(QMainWindow):
         root_layout.addLayout(content_layout, 1)
         self.setCentralWidget(root)
         self._set_details(None)
+        self._refresh_appinfo_required_widgets()
 
     def _open_edit_metadata_dialog(self) -> None:
         appid = self._current_selected_appid()
@@ -1226,11 +1251,12 @@ class MainWindow(QMainWindow):
             self._load_apps_async(str(selected_path))
             return
 
+        self._appinfo_path = None
         self._table.setRowCount(0)
         self._set_details(None)
         self._search_input.setEnabled(False)
-        self._filter_button.setEnabled(False)
         self._table.setEnabled(False)
+        self._refresh_appinfo_required_widgets()
         if self._list_loading_overlay is not None:
             self._list_loading_overlay.start()
 
@@ -1264,13 +1290,14 @@ class MainWindow(QMainWindow):
         QMessageBox.critical(self, "SteamMetadataTool", message)
 
     def _finish_async_load(self) -> None:
-        self._search_input.setEnabled(True)
-        self._filter_button.setEnabled(True)
-        self._table.setEnabled(True)
+        has_loaded_appinfo = self._appinfo_path is not None
+        self._search_input.setEnabled(has_loaded_appinfo)
+        self._table.setEnabled(has_loaded_appinfo)
         if self._list_loading_overlay is not None:
             self._list_loading_overlay.stop()
         self._load_thread = None
         self._load_worker = None
+        self._refresh_appinfo_required_widgets()
 
     def _load_apps(self, path: str) -> None:
         path_obj = Path(path).expanduser()
@@ -1281,6 +1308,11 @@ class MainWindow(QMainWindow):
 
             self._load_apps(str(selected_path))
             return
+
+        self._appinfo_path = None
+        self._table.setRowCount(0)
+        self._set_details(None)
+        self._refresh_appinfo_required_widgets()
 
         try:
             rows, details_by_appid, filter_matches_by_appid = _read_app_rows(path_obj)
@@ -1320,6 +1352,14 @@ class MainWindow(QMainWindow):
         self._table.setSortingEnabled(True)
         self._table.sortItems(0, Qt.SortOrder.AscendingOrder)
         self._apply_table_filter(self._search_input.text())
+        self._refresh_appinfo_required_widgets()
+
+    def _refresh_appinfo_required_widgets(self) -> None:
+        enabled = self._appinfo_path is not None and self._load_thread is None
+        for widget in self._appinfo_required_widgets:
+            widget.setEnabled(enabled)
+        for label in self._appinfo_required_preview_labels:
+            label.set_click_enabled(enabled)
 
     def _refresh_app_from_disk(self, appid: int) -> None:
         if self._appinfo_path is None:
