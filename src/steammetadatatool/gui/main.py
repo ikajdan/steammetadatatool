@@ -1185,7 +1185,9 @@ class MainWindow(QMainWindow):
             raise ValueError("No appinfo.vdf path is loaded.")
 
         metadata_path = app_data_path("metadata.json")
-        metadata_overrides = load_metadata_file(metadata_path)
+        metadata_overrides = (
+            load_metadata_file(metadata_path) if metadata_path.exists() else {}
+        )
         values = dict(metadata_overrides.get(appid, {}))
         values.update(
             metadata_values_from_change_entries(
