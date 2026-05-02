@@ -498,6 +498,7 @@ class EditMetadataDialog(QDialog):
                 existing_data = json.loads(metadata_path.read_text(encoding="utf-8"))
                 existing_payload = _normalize_metadata_payload(existing_data)
 
+            changes_to_apply = list(changes)
             merged = False
             for app_entry in existing_payload:
                 if str(app_entry.get("appid")) != str(self._appid):
@@ -523,6 +524,20 @@ class EditMetadataDialog(QDialog):
                 ]
                 changed_keys = {change["key"] for change in changes}
                 changed_keys_to_save = {change["key"] for change in changes_to_save}
+                restored_changes_to_apply = [
+                    {
+                        "key": key,
+                        "old_value": _format_metadata_value(
+                            existing_default_values.get(key, "")
+                        ),
+                        "new_value": current_entries[key],
+                    }
+                    for key in existing_default_values
+                    if key in current_entries
+                    and key not in changed_keys
+                    and current_entries[key] == existing_default_values[key]
+                ]
+                changes_to_apply.extend(restored_changes_to_apply)
                 existing_changes[:] = [
                     item
                     for item in existing_changes
@@ -564,7 +579,7 @@ class EditMetadataDialog(QDialog):
 
             refreshed_metadata: dict[str, Any] | None = None
             if self._on_save is not None:
-                save_result = self._on_save(changes, existing_payload)
+                save_result = self._on_save(changes_to_apply, existing_payload)
                 if save_result is False:
                     return
                 if isinstance(save_result, dict):
