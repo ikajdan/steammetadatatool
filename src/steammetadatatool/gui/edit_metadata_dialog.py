@@ -220,7 +220,7 @@ class EditMetadataDialog(QDialog):
         *,
         appid: str | None = None,
         app_name: str | None = None,
-        on_save: Callable[[list[dict[str, str]]], None] | None = None,
+        on_save: Callable[[list[dict[str, str]]], bool] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -547,6 +547,9 @@ class EditMetadataDialog(QDialog):
                 or set(app_entry) - {"appid", "changes"}
             ]
 
+            if self._on_save is not None and not self._on_save(changes):
+                return
+
             metadata_path.parent.mkdir(parents=True, exist_ok=True)
             metadata_path.write_text(
                 json.dumps(
@@ -557,8 +560,6 @@ class EditMetadataDialog(QDialog):
                 + "\n",
                 encoding="utf-8",
             )
-            if self._on_save is not None:
-                self._on_save(changes)
         except (OSError, json.JSONDecodeError) as exc:
             QMessageBox.critical(self, "Edit Metadata", str(exc))
             return

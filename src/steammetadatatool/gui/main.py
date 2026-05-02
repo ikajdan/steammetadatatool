@@ -73,6 +73,7 @@ from steammetadatatool.gui.missing_appinfo_dialog import (
     select_appinfo_file_after_detection_failed,
     select_missing_appinfo_file,
 )
+from steammetadatatool.gui.steam_process import is_steam_running
 from steammetadatatool.gui.steam_user import asset_paths_for_app
 
 
@@ -1179,7 +1180,7 @@ class MainWindow(QMainWindow):
 
     def _apply_saved_metadata_changes(
         self, appid: int, changes: list[dict[str, str]]
-    ) -> None:
+    ) -> bool:
         if self._appinfo_path is None:
             raise ValueError("No appinfo.vdf path is loaded.")
 
@@ -1193,7 +1194,10 @@ class MainWindow(QMainWindow):
             )
         )
         if not values:
-            return
+            return True
+
+        if not self._confirm_appinfo_write_when_steam_running():
+            return False
 
         write_modified_appinfo(
             path=self._appinfo_path,
@@ -1203,6 +1207,29 @@ class MainWindow(QMainWindow):
             write_out=None,
         )
         self._refresh_app_from_disk(appid)
+        return True
+
+    def _confirm_appinfo_write_when_steam_running(self) -> bool:
+        if not is_steam_running():
+            return True
+
+        message_box = QMessageBox(self)
+        message_box.setIcon(QMessageBox.Icon.Warning)
+        message_box.setText("Steam is currently running and may overwrite changes.")
+        message_box.setInformativeText(
+            "It is recommended to close Steam before making changes to appinfo.vdf.\n\n"
+            "Do you want to write changes anyway?"
+        )
+        cancel_button = message_box.addButton(
+            "Cancel", QMessageBox.ButtonRole.RejectRole
+        )
+        write_anyway_button = message_box.addButton(
+            "Write Anyway", QMessageBox.ButtonRole.AcceptRole
+        )
+        message_box.setDefaultButton(cancel_button)
+        message_box.exec()
+
+        return message_box.clickedButton() is write_anyway_button
 
     def _open_edit_assets_dialog(self, initial_asset_key: str | None = None) -> None:
         appid = self._current_selected_appid()
