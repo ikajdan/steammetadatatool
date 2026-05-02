@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -60,8 +61,10 @@ from steammetadatatool.core.appinfo import (
 from steammetadatatool.core.keyvalues1 import kv_deep_get
 from steammetadatatool.core.models import OverrideInput
 from steammetadatatool.core.services import (
+    METADATA_FILE_VERSION,
     load_metadata_file,
     metadata_values_from_change_entries,
+    parse_aliases,
     write_modified_appinfo,
 )
 from steammetadatatool.gui.app_data import app_data_path
@@ -150,11 +153,11 @@ def _extended_value(data: dict[str, Any], key: str) -> Any:
 
 
 def _aliases_value(data: dict[str, Any]) -> Any:
-    value = _common_value(data, "aliases")
+    value = _extended_value(data, "aliases")
     if value is not None:
         return value
 
-    value = _extended_value(data, "aliases")
+    value = _common_value(data, "aliases")
     if value is not None:
         return value
 
@@ -203,6 +206,97 @@ def _format_release_date(value: Any) -> str:
         return datetime.fromtimestamp(unix_value, tz=timezone.utc).strftime("%Y-%m-%d")
     except (OverflowError, OSError, ValueError):
         return str(unix_value)
+
+
+_INLINE_EDIT_METADATA_KEYS = {
+    "name": "appinfo.common.name",
+    "sort_as": "appinfo.common.sortas",
+    "aliases": "appinfo.common.aliases",
+    "developer": "appinfo.extended.developer",
+    "publisher": "appinfo.extended.publisher",
+    "original_release_date": "appinfo.common.original_release_date",
+    "steam_release_date": "appinfo.common.steam_release_date",
+}
+
+
+_INLINE_DETAIL_EDITOR_STYLE = """
+QLineEdit {
+    background: transparent;
+    border: 1px solid transparent;
+    padding: 0;
+}
+
+QLineEdit:hover {
+    background-color: palette(alternate-base);
+    border-color: palette(mid);
+}
+
+QLineEdit:focus {
+    background-color: palette(base);
+    border-color: palette(highlight);
+}
+
+QLineEdit:disabled {
+    background: transparent;
+    border-color: transparent;
+}
+"""
+
+
+_DETAIL_VALUE_LEFT_INSET = 3
+
+
+def _detail_text_to_metadata_value(detail_key: str, text: str) -> str:
+    value = "" if text == "–" else text.strip()
+    if detail_key == "aliases":
+        return ", ".join(parse_aliases(value))
+    return value
+
+
+def _merge_metadata_override_values(
+    base: dict[str, Any], updates: dict[str, Any]
+) -> dict[str, Any]:
+    merged = dict(base)
+    update_set_values = updates.get("set_values")
+    for key, value in updates.items():
+        if key != "set_values":
+            merged[key] = value
+
+    if update_set_values:
+        set_values_by_path: dict[tuple[str, ...], tuple[list[str], Any]] = {}
+        for item in base.get("set_values") or []:
+            path, value = item
+            set_values_by_path[tuple(path)] = (path, value)
+        for path, value in update_set_values:
+            set_values_by_path[tuple(path)] = (path, value)
+        merged["set_values"] = list(set_values_by_path.values())
+
+    return merged
+
+
+def _metadata_overrides_from_apps_payload(
+    payload: list[dict[str, Any]],
+) -> dict[int, dict[str, Any]]:
+    out: dict[int, dict[str, Any]] = {}
+    for index, app_entry in enumerate(payload):
+        raw_appid = app_entry.get("appid")
+        try:
+            appid = int(raw_appid)
+        except (TypeError, ValueError):
+            raise ValueError(f"apps[{index}].appid must be a positive integer")
+        if appid <= 0:
+            raise ValueError(f"apps[{index}].appid must be a positive integer")
+
+        changes = app_entry.get("changes", [])
+        if not isinstance(changes, list):
+            raise ValueError(f"apps[{index}].changes must be an array")
+
+        values = metadata_values_from_change_entries(
+            changes,
+            where=f"apps[{index}].changes",
+        )
+        out[appid] = _merge_metadata_override_values(out.get(appid, {}), values)
+    return out
 
 
 def _has_meaningful_metadata(
@@ -572,6 +666,18 @@ class LeftPaddingItemDelegate(QStyledItemDelegate):
         option.rect.adjust(self._left_padding, 0, 0, 0)
 
 
+class InlineDetailLineEdit(QLineEdit):
+    def minimumSizeHint(self) -> QSize:
+        hint = super().minimumSizeHint()
+        hint.setWidth(24)
+        return hint
+
+    def sizeHint(self) -> QSize:
+        hint = super().sizeHint()
+        hint.setWidth(280)
+        return hint
+
+
 class LoadingSpinner(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -731,7 +837,8 @@ class MainWindow(QMainWindow):
         self._appinfo_path: Path | None = None
         self._load_thread: QThread | None = None
         self._load_worker: AppLoadWorker | None = None
-        self._detail_labels: dict[str, QLabel] = {}
+        self._detail_labels: dict[str, QWidget] = {}
+        self._detail_editors: dict[str, QLineEdit] = {}
         self._asset_image_labels: dict[str, QLabel] = {}
         self._asset_boxes: dict[str, QWidget] = {}
         self._assets_heading: QLabel | None = None
@@ -749,6 +856,7 @@ class MainWindow(QMainWindow):
             "icon_path": (32, 32),
         }
         self._search_text = ""
+        self._setting_details = False
         self._capsule_preview = RatioPreviewPixmapLabel(
             self._missing_asset_pixmap(32, 32),
             2,
@@ -899,6 +1007,7 @@ class MainWindow(QMainWindow):
 
         details_form_container = QWidget()
         self._details_form_container = details_form_container
+        details_form_container.setMinimumWidth(285)
         details_form_container.installEventFilter(self)
         details_content_layout.addWidget(
             details_form_container, 2, Qt.AlignmentFlag.AlignTop
@@ -942,7 +1051,7 @@ class MainWindow(QMainWindow):
                 continue
 
             title_label = QLabel(f"{title}:")
-            title_label.setMinimumWidth(175)
+            title_label.setFixedWidth(175)
             title_label.setStyleSheet("font-weight: 600;")
 
             if key in self._asset_image_specs:
@@ -963,16 +1072,57 @@ class MainWindow(QMainWindow):
                 self._appinfo_required_preview_labels.append(value_label)
                 self._asset_image_labels[key] = value_label
             else:
-                value_label = QLabel("–")
-                value_label.setMinimumWidth(280)
-                value_label.setAlignment(
-                    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+                if key in _INLINE_EDIT_METADATA_KEYS:
+                    value_label = InlineDetailLineEdit()
+                    value_label.setMinimumWidth(0)
+                    value_label.setMaximumWidth(280)
+                    value_label.setSizePolicy(
+                        QSizePolicy.Policy.Maximum,
+                        QSizePolicy.Policy.Fixed,
+                    )
+                    value_label.setFrame(False)
+                    value_label.setStyleSheet(_INLINE_DETAIL_EDITOR_STYLE)
+                    value_label.installEventFilter(self)
+                    value_label.returnPressed.connect(
+                        lambda detail_key=key: self._commit_inline_detail_edit(
+                            detail_key
+                        )
+                    )
+                    self._detail_editors[key] = value_label
+                else:
+                    value_label = QLabel("–")
+                    value_label.setMinimumWidth(0)
+                    value_label.setMaximumWidth(280)
+                    value_label.setSizePolicy(
+                        QSizePolicy.Policy.Maximum,
+                        QSizePolicy.Policy.Preferred,
+                    )
+                    if key == "appid":
+                        value_label.setIndent(_DETAIL_VALUE_LEFT_INSET)
+                    value_label.setAlignment(
+                        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+                    )
+                    value_label.setWordWrap(True)
+                    value_label.setTextInteractionFlags(
+                        Qt.TextInteractionFlag.TextSelectableByMouse
+                    )
+            row_value_widget: QWidget = value_label
+            if key == "icon_path":
+                icon_container = QWidget()
+                icon_container.setFixedSize(
+                    self._asset_image_specs[key][0] + _DETAIL_VALUE_LEFT_INSET,
+                    self._asset_image_specs[key][1],
                 )
-                value_label.setWordWrap(True)
-                value_label.setTextInteractionFlags(
-                    Qt.TextInteractionFlag.TextSelectableByMouse
+                icon_container.setSizePolicy(
+                    QSizePolicy.Policy.Fixed,
+                    QSizePolicy.Policy.Fixed,
                 )
-            details_layout.addRow(title_label, value_label)
+                icon_layout = QHBoxLayout(icon_container)
+                icon_layout.setContentsMargins(_DETAIL_VALUE_LEFT_INSET, 0, 0, 0)
+                icon_layout.setSpacing(0)
+                icon_layout.addWidget(value_label)
+                row_value_widget = icon_container
+            details_layout.addRow(title_label, row_value_widget)
             self._detail_labels[key] = value_label
 
         assets_heading = QLabel("Assets")
@@ -1171,32 +1321,227 @@ class MainWindow(QMainWindow):
             raw_metadata,
             appid=details.get("appid") if details is not None else None,
             app_name=details.get("name") if details is not None else None,
-            on_save=lambda changes, selected_appid=appid: (
-                self._apply_saved_metadata_changes(selected_appid, changes)
+            on_save=lambda changes, payload, selected_appid=appid: (
+                self._apply_saved_metadata_changes(
+                    selected_appid,
+                    changes,
+                    metadata_payload=payload,
+                )
             ),
             parent=self,
         )
         dialog.exec()
 
+    def _metadata_payload_apps(self, path: Path) -> list[dict[str, Any]]:
+        if not path.exists():
+            return []
+
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise ValueError(f"could not read metadata file: {exc}")
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"invalid JSON in metadata file: {exc}")
+
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        if isinstance(payload, dict):
+            version = payload.get("version")
+            if version is not None:
+                if (
+                    not isinstance(version, int)
+                    or isinstance(version, bool)
+                    or version < 1
+                ):
+                    raise ValueError(
+                        "metadata file: version must be a positive integer"
+                    )
+                if version > METADATA_FILE_VERSION:
+                    raise ValueError(
+                        "metadata file: unsupported version "
+                        f"{version} (latest supported is {METADATA_FILE_VERSION})"
+                    )
+
+            apps = payload.get("apps")
+            if isinstance(apps, list):
+                return [item for item in apps if isinstance(item, dict)]
+            if version is not None:
+                return []
+            return [payload]
+        raise ValueError("metadata file must contain a JSON object or array")
+
+    def _write_inline_metadata_change(
+        self,
+        appid: int,
+        *,
+        key: str,
+        old_value: str,
+        new_value: str,
+    ) -> None:
+        metadata_path = app_data_path("metadata.json")
+        existing_payload = self._metadata_payload_apps(metadata_path)
+
+        app_entry: dict[str, Any] | None = None
+        for existing_entry in existing_payload:
+            if str(existing_entry.get("appid")) == str(appid):
+                app_entry = existing_entry
+                break
+
+        if app_entry is None:
+            app_entry = {"appid": str(appid), "changes": []}
+            existing_payload.append(app_entry)
+
+        existing_changes = app_entry.get("changes")
+        if not isinstance(existing_changes, list):
+            existing_changes = []
+            app_entry["changes"] = existing_changes
+
+        change_entry: dict[str, Any] | None = None
+        for existing_change in existing_changes:
+            if not isinstance(existing_change, dict):
+                continue
+            if str(existing_change.get("key")) == key:
+                change_entry = existing_change
+                break
+
+        base_value = old_value
+        if change_entry is not None and "old_value" in change_entry:
+            base_value = str(change_entry.get("old_value", ""))
+
+        if new_value == base_value:
+            if change_entry is not None:
+                existing_changes.remove(change_entry)
+        elif change_entry is None:
+            existing_changes.append(
+                {
+                    "key": key,
+                    "old_value": base_value,
+                    "new_value": new_value,
+                }
+            )
+        else:
+            change_entry["old_value"] = base_value
+            change_entry["new_value"] = new_value
+
+        existing_payload = [
+            entry
+            for entry in existing_payload
+            if str(entry.get("appid")) != str(appid)
+            or not isinstance(entry.get("changes"), list)
+            or entry["changes"]
+            or set(entry) - {"appid", "changes"}
+        ]
+
+        payload: dict[str, Any] = {"version": METADATA_FILE_VERSION}
+        if existing_payload:
+            payload["apps"] = existing_payload
+
+        metadata_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata_path.write_text(
+            json.dumps(payload, indent=2, ensure_ascii=True) + "\n",
+            encoding="utf-8",
+        )
+
+    def _commit_inline_detail_edit(self, detail_key: str) -> None:
+        editor = self._detail_editors.get(detail_key)
+        if editor is None:
+            return
+
+        if self._save_inline_detail_edit(detail_key):
+            editor.clearFocus()
+
+    def _save_inline_detail_edit(self, detail_key: str) -> bool:
+        if self._setting_details:
+            return False
+
+        editor = self._detail_editors.get(detail_key)
+        appid = self._current_selected_appid()
+        details = self._details_by_appid.get(appid) if appid is not None else None
+        metadata_key = _INLINE_EDIT_METADATA_KEYS.get(detail_key)
+        if editor is None or appid is None or details is None or metadata_key is None:
+            return False
+
+        old_text = str(details.get(detail_key, ""))
+        new_text = editor.text().strip()
+        try:
+            old_value = _detail_text_to_metadata_value(detail_key, old_text)
+            new_value = _detail_text_to_metadata_value(detail_key, new_text)
+            if new_value == old_value:
+                if app_data_path("metadata.json").exists():
+                    self._write_inline_metadata_change(
+                        appid,
+                        key=metadata_key,
+                        old_value=old_value,
+                        new_value=new_value,
+                    )
+                return True
+
+            changes = [
+                {
+                    "key": metadata_key,
+                    "old_value": old_value,
+                    "new_value": new_value,
+                }
+            ]
+
+            if not self._apply_saved_metadata_changes(appid, changes):
+                editor.setText(old_text)
+                return False
+            self._write_inline_metadata_change(
+                appid,
+                key=metadata_key,
+                old_value=old_value,
+                new_value=new_value,
+            )
+            self._refresh_app_from_disk(appid)
+        except Exception as exc:
+            QMessageBox.critical(self, "Edit Details", str(exc))
+            editor.setText(old_text)
+            return False
+
+        return True
+
+    def _cancel_inline_detail_edit(self, detail_key: str) -> None:
+        if self._setting_details:
+            return
+
+        editor = self._detail_editors.get(detail_key)
+        appid = self._current_selected_appid()
+        details = self._details_by_appid.get(appid) if appid is not None else None
+        if editor is None or details is None:
+            return
+
+        editor.setText(str(details.get(detail_key, "–")))
+
     def _apply_saved_metadata_changes(
-        self, appid: int, changes: list[dict[str, str]]
-    ) -> bool:
+        self,
+        appid: int,
+        changes: list[dict[str, str]],
+        *,
+        metadata_payload: list[dict[str, Any]] | None = None,
+    ) -> bool | dict[str, Any]:
         if self._appinfo_path is None:
             raise ValueError("No appinfo.vdf path is loaded.")
 
         metadata_path = app_data_path("metadata.json")
         metadata_overrides = (
-            load_metadata_file(metadata_path) if metadata_path.exists() else {}
+            _metadata_overrides_from_apps_payload(metadata_payload)
+            if metadata_payload is not None
+            else load_metadata_file(metadata_path)
+            if metadata_path.exists()
+            else {}
         )
-        values = dict(metadata_overrides.get(appid, {}))
-        values.update(
+        values = _merge_metadata_override_values(
+            dict(metadata_overrides.get(appid, {})),
             metadata_values_from_change_entries(
                 changes,
                 where=f"apps[{appid}].changes",
-            )
+            ),
         )
         if not values:
-            return True
+            details = self._details_by_appid.get(appid)
+            raw_metadata = details.get("_raw_metadata") if details is not None else None
+            return raw_metadata if isinstance(raw_metadata, dict) else True
 
         if not self._confirm_appinfo_write_when_steam_running():
             return False
@@ -1208,8 +1553,9 @@ class MainWindow(QMainWindow):
             metadata_overrides={appid: values},
             write_out=None,
         )
-        self._refresh_app_from_disk(appid)
-        return True
+        details = self._refresh_app_from_disk(appid)
+        raw_metadata = details.get("_raw_metadata")
+        return raw_metadata if isinstance(raw_metadata, dict) else True
 
     def _confirm_appinfo_write_when_steam_running(self) -> bool:
         if not is_steam_running():
@@ -1390,7 +1736,7 @@ class MainWindow(QMainWindow):
         for label in self._appinfo_required_preview_labels:
             label.set_click_enabled(enabled)
 
-    def _refresh_app_from_disk(self, appid: int) -> None:
+    def _refresh_app_from_disk(self, appid: int) -> dict[str, Any]:
         if self._appinfo_path is None:
             raise ValueError("No appinfo.vdf path is loaded.")
 
@@ -1403,7 +1749,7 @@ class MainWindow(QMainWindow):
                 if self._current_selected_appid() == appid:
                     self._set_details(details)
                 self._apply_table_filter(self._search_input.text())
-                return
+                return details
 
         raise ValueError(f"Could not reload app {appid} from appinfo.vdf.")
 
@@ -1444,10 +1790,20 @@ class MainWindow(QMainWindow):
             return None
 
     def _set_details(self, details: dict[str, Any] | None) -> None:
+        self._setting_details = True
         self._set_capsule_preview((details or {}).get("capsule_path", "-"))
-        for key, label in self._detail_labels.items():
-            fallback = "-" if key in self._asset_image_specs else "–"
-            label.setText((details or {}).get(key, fallback))
+        try:
+            for key, widget in self._detail_labels.items():
+                fallback = "-" if key in self._asset_image_specs else "–"
+                value = str((details or {}).get(key, fallback))
+                if isinstance(widget, QLineEdit):
+                    widget.setText(value)
+                    widget.setCursorPosition(0)
+                    widget.setEnabled(details is not None)
+                elif isinstance(widget, QLabel):
+                    widget.setText(value)
+        finally:
+            self._setting_details = False
 
         any_assets_visible = False
         for key in ("header_path", "hero_path"):
@@ -1487,6 +1843,23 @@ class MainWindow(QMainWindow):
         self._capsule_preview.set_source_pixmap(pixmap)
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        detail_key = next(
+            (key for key, editor in self._detail_editors.items() if watched is editor),
+            None,
+        )
+        if detail_key is not None:
+            if event.type() == QEvent.Type.FocusOut:
+                self._cancel_inline_detail_edit(detail_key)
+            elif (
+                event.type() == QEvent.Type.KeyPress
+                and hasattr(event, "key")
+                and event.key() == Qt.Key.Key_Escape
+            ):
+                self._cancel_inline_detail_edit(detail_key)
+                if isinstance(watched, QLineEdit):
+                    watched.clearFocus()
+                return True
+
         if watched is self._details_form_container and event.type() in {
             QEvent.Type.Resize,
             QEvent.Type.Show,

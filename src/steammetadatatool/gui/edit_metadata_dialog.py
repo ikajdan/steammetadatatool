@@ -220,7 +220,10 @@ class EditMetadataDialog(QDialog):
         *,
         appid: str | None = None,
         app_name: str | None = None,
-        on_save: Callable[[list[dict[str, str]]], bool] | None = None,
+        on_save: Callable[
+            [list[dict[str, str]], list[dict[str, Any]]], bool | dict[str, Any]
+        ]
+        | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -238,6 +241,7 @@ class EditMetadataDialog(QDialog):
         }
         self._appid = appid
         self._on_save = on_save
+        self._readonly_keys = readonly_keys
         self._original_entries = dict(entries)
         self._default_entries = dict(entries)
         self._saved_change_keys: set[str] = set()
@@ -245,6 +249,7 @@ class EditMetadataDialog(QDialog):
         self._search_text = ""
         self._apply_button: QPushButton | None = None
         action_icon_color = self.palette().placeholderText().color()
+        self._readonly_text_color = self.palette().placeholderText().color()
         self._revert_icon = QIcon(
             _monochrome_icon_pixmap(
                 QIcon.fromTheme(
@@ -255,8 +260,6 @@ class EditMetadataDialog(QDialog):
                 action_icon_color,
             )
         )
-        readonly_text_color = self.palette().placeholderText().color()
-
         dialog_layout = QVBoxLayout(self)
         dialog_layout.setContentsMargins(10, 11, 10, 10)
         dialog_layout.setSpacing(11)
@@ -326,15 +329,7 @@ class EditMetadataDialog(QDialog):
             ),
         )
 
-        for row, (key, value) in enumerate(self._saved_entries.items()):
-            key_item = QTableWidgetItem(key)
-            value_item = QTableWidgetItem(value)
-            key_item.setFlags(key_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            if key in readonly_keys:
-                value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-                value_item.setForeground(readonly_text_color)
-            metadata_table.setItem(row, 0, key_item)
-            metadata_table.setItem(row, 1, value_item)
+        self._set_metadata_rows(self._saved_entries)
 
         def start_value_edit(row: int, column: int) -> None:
             if column != 1:
@@ -446,6 +441,26 @@ class EditMetadataDialog(QDialog):
 
         return saved_entries
 
+    def _set_metadata_rows(self, entries: dict[str, str]) -> None:
+        self._metadata_table.blockSignals(True)
+        sorting_enabled = self._metadata_table.isSortingEnabled()
+        self._metadata_table.setSortingEnabled(False)
+        self._metadata_table.setRowCount(len(entries))
+        for row, (key, value) in enumerate(entries.items()):
+            key_item = QTableWidgetItem(key)
+            value_item = QTableWidgetItem(value)
+            key_item.setFlags(key_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            if key in self._readonly_keys:
+                value_item.setFlags(value_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                value_item.setForeground(self._readonly_text_color)
+            self._metadata_table.setItem(row, 0, key_item)
+            self._metadata_table.setItem(row, 1, value_item)
+        self._metadata_table.setSortingEnabled(sorting_enabled)
+        if sorting_enabled:
+            self._metadata_table.sortItems(0, Qt.SortOrder.AscendingOrder)
+        self._metadata_table.blockSignals(False)
+        self._apply_table_filter(self._search_text)
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._apply_column_ratio()
@@ -512,7 +527,7 @@ class EditMetadataDialog(QDialog):
                     item
                     for item in existing_changes
                     if not isinstance(item, dict)
-                    or str(item.get("key")) not in self._original_entries
+                    or str(item.get("key")) not in current_entries
                     or str(item.get("key")) in changed_keys_to_save
                     or current_entries.get(str(item.get("key")))
                     == _format_metadata_value(item.get("new_value"))
@@ -547,8 +562,13 @@ class EditMetadataDialog(QDialog):
                 or set(app_entry) - {"appid", "changes"}
             ]
 
-            if self._on_save is not None and not self._on_save(changes):
-                return
+            refreshed_metadata: dict[str, Any] | None = None
+            if self._on_save is not None:
+                save_result = self._on_save(changes, existing_payload)
+                if save_result is False:
+                    return
+                if isinstance(save_result, dict):
+                    refreshed_metadata = save_result
 
             metadata_path.parent.mkdir(parents=True, exist_ok=True)
             metadata_path.write_text(
@@ -567,12 +587,16 @@ class EditMetadataDialog(QDialog):
             QMessageBox.critical(self, "Edit Metadata", str(exc))
             return
 
-        self._original_entries = dict(current_entries)
-        self._default_entries = dict(current_entries)
+        if refreshed_metadata is not None:
+            self._original_entries = dict(_flatten_metadata_entries(refreshed_metadata))
+        else:
+            self._original_entries = dict(current_entries)
+        self._default_entries = dict(self._original_entries)
         self._saved_change_keys = self._saved_change_keys_from_payload(existing_payload)
         self._saved_entries = self._entries_with_saved_changes(
             dict(self._original_entries)
         )
+        self._set_metadata_rows(self._saved_entries)
         self._refresh_unsaved_change_styles()
 
     def _saved_change_keys_from_payload(
