@@ -52,8 +52,14 @@ jobs:
       - name: Validate AppStream metadata
         run: appstreamcli validate --no-net data/io.github.ikajdan.steammetadatatool.metainfo.xml
 
-      - name: Check SPDX/REUSE compliance
+      - name: Check REUSE compliance
         run: reuse lint
+
+      - name: Check Python formatting
+        run: uvx ruff format --check .
+
+      - name: Check Python linting
+        run: uvx ruff check .
 
       - name: Build package
         run: uv build
