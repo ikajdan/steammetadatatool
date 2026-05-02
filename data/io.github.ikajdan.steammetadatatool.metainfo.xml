@@ -6,19 +6,42 @@ SPDX-License-Identifier: CC0-1.0
 <component type="desktop-application">
   <id>io.github.ikajdan.steammetadatatool</id>
   <name>SteamMetadataTool</name>
+  <icon type="stock">steammetadatatool</icon>
   <summary>A tool for managing Steam client game metadata and library artwork</summary>
+  <description>
+    <p>
+      SteamMetadataTool is a desktop utility for inspecting and customizing the
+      game metadata used by the Steam client. It reads the local appinfo.vdf
+      database, shows installed app records in a searchable interface, and allows
+      users to apply custom metadata overrides and artwork to their Steam library.
+    </p>
+  </description>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <developer id="io.github.ikajdan">
     <name>Ignacy Kajdan</name>
   </developer>
   <url type="homepage">https://github.com/ikajdan/steammetadatatool</url>
+  <url type="bugtracker">https://github.com/ikajdan/steammetadatatool/issues</url>
   <launchable type="desktop-id">io.github.ikajdan.steammetadatatool.desktop</launchable>
-  <content_rating type="oars-1.1" />
-  <description>
-    <p>
-      SteamMetadataTool is a utility for browsing, exporting, and customizing
-      Steam client game metadata and library artwork.
-    </p>
-  </description>
+  <provides>
+    <id>io.github.ikajdan.steammetadatatool.desktop</id>
+    <binary>steammetadatatool-gui</binary>
+  </provides>
+  <branding>
+    <color type="primary" scheme_preference="light">#d7ff64</color>
+    <color type="primary" scheme_preference="dark">#35424d</color>
+  </branding>
+  <categories>
+    <category>Utility</category>
+    <category>Game</category>
+  </categories>
+  <keywords>
+    <keyword>Steam</keyword>
+    <keyword>metadata</keyword>
+    <keyword>appinfo</keyword>
+    <keyword>library</keyword>
+    <keyword>artwork</keyword>
+    <keyword>games</keyword>
+  </keywords>
 </component>
