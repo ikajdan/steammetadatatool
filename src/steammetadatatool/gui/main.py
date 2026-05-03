@@ -76,6 +76,7 @@ from steammetadatatool.gui.missing_appinfo_dialog import (
     select_appinfo_file_after_detection_failed,
     select_missing_appinfo_file,
 )
+from steammetadatatool.gui.search import normalized_search_text
 from steammetadatatool.gui.steam_process import is_steam_running
 from steammetadatatool.gui.steam_user import asset_paths_for_app
 
@@ -2115,7 +2116,7 @@ class MainWindow(QMainWindow):
         self._set_details(self._details_by_appid.get(appid))
 
     def _apply_table_filter(self, text: str) -> None:
-        self._search_text = text.strip().casefold()
+        self._search_text = normalized_search_text(text)
 
         first_visible_row: int | None = None
         current_row = self._table.currentRow()
@@ -2131,8 +2132,8 @@ class MainWindow(QMainWindow):
             appid_text = appid_item.text()
             name_text = name_item.text()
             matches_search = not self._search_text or (
-                self._search_text in appid_text.casefold()
-                or self._search_text in name_text.casefold()
+                self._search_text in normalized_search_text(appid_text)
+                or self._search_text in normalized_search_text(name_text)
             )
             matches_filter = True
             if self._filter_button.isChecked():
