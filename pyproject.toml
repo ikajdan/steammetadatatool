@@ -20,6 +20,12 @@ gui = [
   "PySide6>=6.6",
 ]
 
+[dependency-groups]
+dev = [
+  "mypy>=1.18",
+  "ruff>=0.14",
+]
+
 [project.scripts]
 steammetadatatool-cli = "steammetadatatool.cli.main:main"
 steammetadatatool-gui = "steammetadatatool.gui.main:main"
@@ -29,3 +35,43 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+  "E",
+  "F",
+]
+ignore = [
+  "E501",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["steammetadatatool"]
+
+[tool.mypy]
+python_version = "3.11"
+files = [
+  "src/steammetadatatool/cli",
+  "src/steammetadatatool/core",
+]
+mypy_path = "src"
+namespace_packages = true
+explicit_package_bases = true
+pretty = true
+show_error_codes = true
+ignore_missing_imports = true
+no_implicit_optional = true
+check_untyped_defs = true
+disable_error_code = [
+  "no-redef",
+]
+
+[[tool.mypy.overrides]]
+module = [
+  "PySide6.*",
+]
+ignore_missing_imports = true

@@ -55,11 +55,17 @@ jobs:
       - name: Check REUSE compliance
         run: reuse lint
 
+      - name: Install Python dependencies
+        run: uv sync --all-extras --dev
+
       - name: Check Python formatting
-        run: uvx ruff format --check .
+        run: uv run ruff format --check .
 
       - name: Check Python linting
-        run: uvx ruff check .
+        run: uv run ruff check .
+
+      - name: Check Python types
+        run: uv run mypy
 
       - name: Build package
         run: uv build
