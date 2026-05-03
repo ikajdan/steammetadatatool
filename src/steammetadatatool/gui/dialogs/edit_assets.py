@@ -61,6 +61,7 @@ from steammetadatatool.gui.steam.assets import (
     original_icon_path_for_cached_icon,
 )
 from steammetadatatool.gui.steam.paths import steam_grid_dir
+from steammetadatatool.gui.widgets.toast import ToastMessage
 
 _CUSTOM_ASSET_DIRS = {
     "capsule_path": "capsule",
@@ -804,6 +805,7 @@ class EditAssetsDialog(QDialog):
         self._asset_variant_counts: dict[str, int] = {}
         self._asset_scroll_animations: dict[str, QPropertyAnimation] = {}
         self._asset_unapplied_labels: dict[str, QLabel] = {}
+        self._toast = ToastMessage(self, bottom_margin=80)
         self._initial_asset_key = initial_asset_key
         self._did_initial_asset_scroll = False
         self._initial_asset_scroll_attempts = 0
@@ -1463,6 +1465,7 @@ class EditAssetsDialog(QDialog):
         )
         self._default_selected_asset_keys.clear()
         self._refresh_unapplied_state()
+        self._show_status_message("Assets saved")
 
     def _open_asset_folder(self) -> None:
         if self._appid is None:
@@ -1485,6 +1488,9 @@ class EditAssetsDialog(QDialog):
                 "Edit Assets",
                 f"Could not open asset folder:\n{app_assets_dir}",
             )
+
+    def _show_status_message(self, message: str) -> None:
+        self._toast.show_message(message)
 
     def _scroll_asset_variants(self, asset_key: str, direction: int) -> None:
         scroll_area = self._asset_variant_scroll_areas.get(asset_key)

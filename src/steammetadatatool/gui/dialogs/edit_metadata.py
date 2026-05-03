@@ -32,6 +32,7 @@ from steammetadatatool.gui.data.app_data import app_data_path
 from steammetadatatool.gui.data.json_helpers import validate_json_file_version
 from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
 from steammetadatatool.gui.widgets.empty_state import EmptyStateOverlay
+from steammetadatatool.gui.widgets.toast import ToastMessage
 
 _METADATA_FILE_VERSION = 1
 
@@ -222,6 +223,7 @@ class EditMetadataDialog(QDialog):
         self._search_text = ""
         self._apply_button: QPushButton | None = None
         self._empty_search_overlay: EmptyStateOverlay | None = None
+        self._toast = ToastMessage(self, bottom_margin=80)
         action_icon_color = self.palette().placeholderText().color()
         self._readonly_text_color = self.palette().placeholderText().color()
         self._revert_icon = QIcon(
@@ -603,6 +605,7 @@ class EditMetadataDialog(QDialog):
         )
         self._set_metadata_rows(self._saved_entries)
         self._refresh_unsaved_change_styles()
+        self._show_status_message("Metadata saved")
 
     def _saved_change_keys_from_payload(
         self, payload: list[dict[str, Any]]
@@ -625,6 +628,9 @@ class EditMetadataDialog(QDialog):
                     keys.add(key)
 
         return keys
+
+    def _show_status_message(self, message: str) -> None:
+        self._toast.show_message(message)
 
     def _current_entries(self) -> dict[str, str]:
         entries: dict[str, str] = {}

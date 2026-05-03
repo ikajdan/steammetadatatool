@@ -58,6 +58,12 @@ from steammetadatatool.core.services import (
     write_modified_appinfo,
 )
 from steammetadatatool.gui.data.app_data import app_data_path
+from steammetadatatool.gui.dialogs.edit_assets import EditAssetsDialog
+from steammetadatatool.gui.dialogs.edit_metadata import EditMetadataDialog
+from steammetadatatool.gui.dialogs.missing_appinfo import (
+    select_appinfo_file_after_detection_failed,
+    select_missing_appinfo_file,
+)
 from steammetadatatool.gui.models.app_details import (
     DETAIL_VALUE_LEFT_INSET,
     INLINE_DETAIL_EDITOR_STYLE,
@@ -71,16 +77,10 @@ from steammetadatatool.gui.models.app_details import (
     read_app_rows,
 )
 from steammetadatatool.gui.models.app_loader import AppLoadWorker
-from steammetadatatool.gui.services.theme import apply_theme
 from steammetadatatool.gui.services.asset_optimizer import run_asset_optimization_prompt
-from steammetadatatool.gui.dialogs.edit_assets import EditAssetsDialog
-from steammetadatatool.gui.dialogs.edit_metadata import EditMetadataDialog
 from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
-from steammetadatatool.gui.dialogs.missing_appinfo import (
-    select_appinfo_file_after_detection_failed,
-    select_missing_appinfo_file,
-)
 from steammetadatatool.gui.services.search import normalized_search_text
+from steammetadatatool.gui.services.theme import apply_theme
 from steammetadatatool.gui.steam.process import is_steam_running
 from steammetadatatool.gui.widgets.delegates import LeftPaddingItemDelegate
 from steammetadatatool.gui.widgets.empty_state import EmptyStateOverlay
@@ -90,6 +90,7 @@ from steammetadatatool.gui.widgets.previews import (
     PreviewPixmapLabel,
     RatioPreviewPixmapLabel,
 )
+from steammetadatatool.gui.widgets.toast import ToastMessage
 
 
 class MainWindow(QMainWindow):
@@ -115,6 +116,7 @@ class MainWindow(QMainWindow):
         self._filter_matches_by_appid: dict[int, bool] = {}
         self._list_loading_overlay: ListLoadingOverlay | None = None
         self._empty_search_overlay: EmptyStateOverlay | None = None
+        self._toast: ToastMessage | None = None
         self._pixmap_cache: dict[str, QPixmap] = {}
         self._composited_hero_cache: dict[tuple[str, str, str], QPixmap] = {}
         self._asset_image_specs: dict[str, tuple[int, int]] = {
@@ -572,6 +574,7 @@ class MainWindow(QMainWindow):
         content_layout.addWidget(details_panel, 4)
         root_layout.addLayout(content_layout, 1)
         self.setCentralWidget(root)
+        self._toast = ToastMessage(details_panel, bottom_margin=80)
         self._set_details(None)
         self._refresh_appinfo_required_widgets()
         app = QApplication.instance()
@@ -760,6 +763,7 @@ class MainWindow(QMainWindow):
                         old_value=old_value,
                         new_value=new_value,
                     )
+                    self._show_status_message("Metadata saved")
                 return True
 
             changes = [
@@ -780,12 +784,17 @@ class MainWindow(QMainWindow):
                 new_value=new_value,
             )
             self._refresh_app_from_disk(appid)
+            self._show_status_message("Metadata saved")
         except Exception as exc:
             QMessageBox.critical(self, "Edit Details", str(exc))
             editor.setText(old_text)
             return False
 
         return True
+
+    def _show_status_message(self, message: str) -> None:
+        if self._toast is not None:
+            self._toast.show_message(message)
 
     def _cancel_inline_detail_edit(self, detail_key: str) -> None:
         if self._setting_details:
@@ -1197,7 +1206,10 @@ class MainWindow(QMainWindow):
         if meaningful_modifiers:
             return False
         focus_widget = QApplication.focusWidget()
-        if isinstance(focus_widget, (QLineEdit, QPushButton, QToolButton)):
+        if (
+            focus_widget is not self._table
+            and focus_widget is not self._table.viewport()
+        ):
             return False
 
         self._open_edit_metadata_dialog()
