@@ -5,29 +5,22 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from PySide6.QtCore import (
     QEvent,
     QObject,
-    QPoint,
-    QRectF,
     QSize,
     Qt,
     QThread,
     QTimer,
-    QVariantAnimation,
-    Signal,
     Slot,
 )
 from PySide6.QtGui import (
     QColor,
     QIcon,
     QPainter,
-    QPainterPath,
-    QPen,
     QPixmap,
 )
 from PySide6.QtWidgets import (
@@ -45,7 +38,6 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QStackedLayout,
     QStyle,
-    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QToolButton,
@@ -58,783 +50,45 @@ from steammetadatatool.core.appinfo import (
     AppInfoFile,
     find_steam_appinfo_path,
 )
-from steammetadatatool.core.keyvalues1 import kv_deep_get
 from steammetadatatool.core.models import OverrideInput
 from steammetadatatool.core.services import (
     METADATA_FILE_VERSION,
     load_metadata_file,
     metadata_values_from_change_entries,
-    parse_aliases,
     write_modified_appinfo,
 )
-from steammetadatatool.gui.app_data import app_data_path
-from steammetadatatool.gui.app_theme import apply_theme
-from steammetadatatool.gui.asset_optimizer import run_asset_optimization_prompt
-from steammetadatatool.gui.edit_assets_dialog import EditAssetsDialog
-from steammetadatatool.gui.edit_metadata_dialog import EditMetadataDialog
-from steammetadatatool.gui.missing_appinfo_dialog import (
+from steammetadatatool.gui.data.app_data import app_data_path
+from steammetadatatool.gui.models.app_details import (
+    DETAIL_VALUE_LEFT_INSET,
+    INLINE_DETAIL_EDITOR_STYLE,
+    INLINE_EDIT_METADATA_KEYS,
+    detail_text_to_metadata_value,
+    details_for_app,
+    float_value,
+    matches_game_filter,
+    merge_metadata_override_values,
+    metadata_overrides_from_apps_payload,
+    read_app_rows,
+)
+from steammetadatatool.gui.models.app_loader import AppLoadWorker
+from steammetadatatool.gui.services.theme import apply_theme
+from steammetadatatool.gui.services.asset_optimizer import run_asset_optimization_prompt
+from steammetadatatool.gui.dialogs.edit_assets import EditAssetsDialog
+from steammetadatatool.gui.dialogs.edit_metadata import EditMetadataDialog
+from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
+from steammetadatatool.gui.dialogs.missing_appinfo import (
     select_appinfo_file_after_detection_failed,
     select_missing_appinfo_file,
 )
-from steammetadatatool.gui.search import normalized_search_text
-from steammetadatatool.gui.steam_process import is_steam_running
-from steammetadatatool.gui.steam_user import asset_paths_for_app
-
-
-def _library_logo_position(data: dict[str, Any]) -> dict[str, Any] | None:
-    position = kv_deep_get(
-        data,
-        "appinfo",
-        "common",
-        "library_assets_full",
-        "library_logo",
-        "logo_position",
-    )
-    if isinstance(position, dict):
-        return position
-
-    position = kv_deep_get(data, "appinfo", "common", "library_assets", "logo_position")
-    if isinstance(position, dict):
-        return position
-
-    position = kv_deep_get(
-        data, "common", "library_assets_full", "library_logo", "logo_position"
-    )
-    if isinstance(position, dict):
-        return position
-
-    position = kv_deep_get(data, "common", "library_assets", "logo_position")
-    return position if isinstance(position, dict) else None
-
-
-def _float_value(value: Any) -> float | None:
-    if isinstance(value, (int, float)):
-        return float(value)
-
-    if isinstance(value, str):
-        try:
-            return float(value)
-        except ValueError:
-            return None
-
-    return None
-
-
-def _monochrome_icon_pixmap(
-    icon: QIcon, size: int, color: QColor, right_padding: int = 0
-) -> QPixmap:
-    pixmap = icon.pixmap(size, size)
-    if pixmap.isNull():
-        return pixmap
-
-    monochrome = QPixmap(pixmap.width() + right_padding, pixmap.height())
-    monochrome.fill(Qt.GlobalColor.transparent)
-
-    painter = QPainter(monochrome)
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
-    painter.drawPixmap(0, 0, pixmap)
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-    painter.fillRect(monochrome.rect(), color)
-    painter.end()
-    return monochrome
-
-
-def _common_value(data: dict[str, Any], key: str) -> Any:
-    value = kv_deep_get(data, "appinfo", "common", key)
-    if value is not None:
-        return value
-    return kv_deep_get(data, "common", key)
-
-
-def _extended_value(data: dict[str, Any], key: str) -> Any:
-    value = kv_deep_get(data, "appinfo", "extended", key)
-    if value is not None:
-        return value
-    return kv_deep_get(data, "extended", key)
-
-
-def _aliases_value(data: dict[str, Any]) -> Any:
-    value = _extended_value(data, "aliases")
-    if value is not None:
-        return value
-
-    value = _common_value(data, "aliases")
-    if value is not None:
-        return value
-
-    return None
-
-
-def _sort_as_value(data: dict[str, Any]) -> Any:
-    value = _common_value(data, "sortas")
-    if value is not None:
-        return value
-
-    value = _extended_value(data, "sortas")
-    if value is not None:
-        return value
-
-    return None
-
-
-def _format_aliases(value: Any) -> str:
-    if value is None:
-        return "–"
-    if isinstance(value, list):
-        return ", ".join(str(v) for v in value) if value else "–"
-    raw = str(value).strip()
-    return raw or "–"
-
-
-def _format_release_date(value: Any) -> str:
-    if value is None:
-        return "–"
-
-    unix_value: int | None = None
-    if isinstance(value, int):
-        unix_value = value
-    elif isinstance(value, str) and value.isdigit():
-        unix_value = int(value)
-
-    if unix_value is None:
-        text = str(value).strip()
-        return text or "–"
-
-    if unix_value <= 0:
-        return "–"
-
-    try:
-        return datetime.fromtimestamp(unix_value, tz=timezone.utc).strftime("%Y-%m-%d")
-    except (OverflowError, OSError, ValueError):
-        return str(unix_value)
-
-
-def _release_date_details(data: dict[str, Any]) -> tuple[str, str]:
-    original_release_date = _format_release_date(
-        _common_value(data, "original_release_date")
-    )
-    if original_release_date != "–":
-        return original_release_date, "original_release_date"
-
-    steam_release_date = _format_release_date(_common_value(data, "steam_release_date"))
-    if steam_release_date != "–":
-        return steam_release_date, "steam_release_date"
-
-    return "–", "original_release_date"
-
-
-_INLINE_EDIT_METADATA_KEYS = {
-    "name": "appinfo.common.name",
-    "sort_as": "appinfo.common.sortas",
-    "aliases": "appinfo.common.aliases",
-    "developer": "appinfo.extended.developer",
-    "publisher": "appinfo.extended.publisher",
-    "release_date": "appinfo.common.original_release_date",
-}
-
-
-_INLINE_DETAIL_EDITOR_STYLE = """
-QLineEdit {
-    background: transparent;
-    border: 1px solid transparent;
-    padding: 0;
-}
-
-QLineEdit:hover {
-    background-color: palette(alternate-base);
-    border-color: palette(mid);
-}
-
-QLineEdit:focus {
-    background-color: palette(base);
-    border-color: palette(highlight);
-}
-
-QLineEdit:disabled {
-    background: transparent;
-    border-color: transparent;
-}
-"""
-
-
-_DETAIL_VALUE_LEFT_INSET = 3
-
-
-def _detail_text_to_metadata_value(detail_key: str, text: str) -> str:
-    value = "" if text == "–" else text.strip()
-    if detail_key == "aliases":
-        return ", ".join(parse_aliases(value))
-    return value
-
-
-def _merge_metadata_override_values(
-    base: dict[str, Any], updates: dict[str, Any]
-) -> dict[str, Any]:
-    merged = dict(base)
-    update_set_values = updates.get("set_values")
-    for key, value in updates.items():
-        if key != "set_values":
-            merged[key] = value
-
-    if update_set_values:
-        set_values_by_path: dict[tuple[str, ...], tuple[list[str], Any]] = {}
-        for item in base.get("set_values") or []:
-            path, value = item
-            set_values_by_path[tuple(path)] = (path, value)
-        for path, value in update_set_values:
-            set_values_by_path[tuple(path)] = (path, value)
-        merged["set_values"] = list(set_values_by_path.values())
-
-    return merged
-
-
-def _metadata_overrides_from_apps_payload(
-    payload: list[dict[str, Any]],
-) -> dict[int, dict[str, Any]]:
-    out: dict[int, dict[str, Any]] = {}
-    for index, app_entry in enumerate(payload):
-        raw_appid = app_entry.get("appid")
-        try:
-            appid = int(raw_appid)
-        except (TypeError, ValueError):
-            raise ValueError(f"apps[{index}].appid must be a positive integer")
-        if appid <= 0:
-            raise ValueError(f"apps[{index}].appid must be a positive integer")
-
-        changes = app_entry.get("changes", [])
-        if not isinstance(changes, list):
-            raise ValueError(f"apps[{index}].changes must be an array")
-
-        values = metadata_values_from_change_entries(
-            changes,
-            where=f"apps[{index}].changes",
-        )
-        out[appid] = _merge_metadata_override_values(out.get(appid, {}), values)
-    return out
-
-
-def _has_meaningful_metadata(
-    value: Any,
-    *,
-    ignored_keys: frozenset[str] = frozenset({"appid", "name"}),
-) -> bool:
-    if value is None:
-        return False
-
-    if isinstance(value, dict):
-        for key, nested_value in value.items():
-            if key in ignored_keys:
-                continue
-            if _has_meaningful_metadata(nested_value, ignored_keys=ignored_keys):
-                return True
-        return False
-
-    if isinstance(value, (list, tuple, set)):
-        return any(
-            _has_meaningful_metadata(item, ignored_keys=ignored_keys) for item in value
-        )
-
-    if isinstance(value, str):
-        return bool(value.strip())
-
-    return True
-
-
-def _matches_game_filter(data: dict[str, Any]) -> bool:
-    app_type = str(_common_value(data, "type") or "").strip().casefold()
-    if app_type != "game":
-        return False
-
-    return _has_meaningful_metadata(data)
-
-
-class PreviewPixmapLabel(QLabel):
-    def __init__(
-        self,
-        placeholder: QPixmap,
-        parent: QWidget | None = None,
-        *,
-        corner_radius: float = 0.0,
-        show_placeholder_frame: bool = True,
-        show_inactive_border: bool = False,
-        pixmap_alignment: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignCenter,
-    ) -> None:
-        super().__init__(parent)
-        self._source_pixmap: QPixmap | None = None
-        self._placeholder_pixmap = placeholder
-        self._corner_radius = corner_radius
-        self._show_placeholder_frame = show_placeholder_frame
-        self._show_inactive_border = show_inactive_border
-        self._hovered = False
-        self._click_handler: Callable[[], None] | None = None
-        self._click_enabled = True
-        self._show_click_overlay = False
-        self._overlay_icon = QIcon()
-        self._overlay_opacity = 0.0
-        self._overlay_animation = QVariantAnimation(self)
-        self._overlay_animation.setDuration(250)
-        self._overlay_animation.setStartValue(0.0)
-        self._overlay_animation.setEndValue(1.0)
-        self._overlay_animation.valueChanged.connect(self._on_overlay_opacity_changed)
-        self.setAlignment(pixmap_alignment)
-        self.setFrameShape(
-            QFrame.Shape.StyledPanel
-            if self._show_placeholder_frame
-            else QFrame.Shape.NoFrame
-        )
-        self.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Expanding,
-        )
-        self.setMouseTracking(True)
-
-    def set_click_handler(
-        self,
-        handler: Callable[[], None] | None,
-        overlay_icon: QIcon | None = None,
-        *,
-        show_overlay: bool = True,
-    ) -> None:
-        self._click_handler = handler
-        self._show_click_overlay = handler is not None and show_overlay
-        if overlay_icon is not None:
-            self._overlay_icon = overlay_icon
-        if not self._show_click_overlay or not self._click_enabled:
-            self._overlay_animation.stop()
-            self._overlay_opacity = 0.0
-        self._refresh_cursor()
-        self.update()
-
-    def set_click_enabled(self, enabled: bool) -> None:
-        self._click_enabled = enabled
-        if not enabled:
-            self._overlay_animation.stop()
-            self._overlay_opacity = 0.0
-        elif self._hovered:
-            self._animate_overlay(visible=True)
-        self._refresh_cursor()
-        self.update()
-
-    def _refresh_cursor(self) -> None:
-        self.setCursor(
-            Qt.CursorShape.PointingHandCursor
-            if self._click_handler is not None and self._click_enabled
-            else Qt.CursorShape.ArrowCursor
-        )
-
-    def _on_overlay_opacity_changed(self, value) -> None:
-        try:
-            self._overlay_opacity = float(value)
-        except (TypeError, ValueError):
-            self._overlay_opacity = 0.0
-        self.update()
-
-    def set_source_pixmap(self, pixmap: QPixmap | None) -> None:
-        self._source_pixmap = pixmap if pixmap and not pixmap.isNull() else None
-        self._refresh_pixmap()
-
-    def set_placeholder_pixmap(self, pixmap: QPixmap) -> None:
-        self._placeholder_pixmap = pixmap
-        self._refresh_pixmap()
-
-    def resizeEvent(self, event) -> None:
-        super().resizeEvent(event)
-        self._refresh_pixmap()
-
-    def enterEvent(self, event) -> None:
-        self._hovered = True
-        self._animate_overlay(visible=True)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event) -> None:
-        self._hovered = False
-        self._animate_overlay(visible=False)
-        super().leaveEvent(event)
-
-    def _animate_overlay(self, *, visible: bool) -> None:
-        if not self._show_click_overlay or not self._click_enabled:
-            self._overlay_opacity = 0.0
-            self._overlay_animation.stop()
-            self.update()
-            return
-
-        self._overlay_animation.stop()
-        self._overlay_animation.setStartValue(self._overlay_opacity)
-        self._overlay_animation.setEndValue(1.0 if visible else 0.0)
-        self._overlay_animation.start()
-
-    def mouseReleaseEvent(self, event) -> None:
-        if (
-            self._click_handler is not None
-            and self._click_enabled
-            and event.button() == Qt.MouseButton.LeftButton
-            and self.rect().contains(event.position().toPoint())
-        ):
-            self._click_handler()
-            event.accept()
-            return
-        super().mouseReleaseEvent(event)
-
-    def paintEvent(self, event) -> None:
-        super().paintEvent(event)
-        self._paint_inactive_border()
-        if (
-            self._click_handler is None
-            or not self._click_enabled
-            or not self._show_click_overlay
-            or self._overlay_opacity <= 0.0
-        ):
-            return
-
-        pixmap = self.pixmap()
-        if pixmap is None or pixmap.isNull():
-            return
-
-        pixmap_rect = pixmap.rect()
-        pixmap_rect.moveTo(self._pixmap_top_left(pixmap))
-
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        overlay_size = 30
-        margin = 10
-        overlay_rect = pixmap_rect.adjusted(
-            pixmap_rect.width() - overlay_size - margin,
-            margin,
-            -margin,
-            -(pixmap_rect.height() - overlay_size - margin),
-        )
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setOpacity(self._overlay_opacity)
-        painter.setBrush(QColor(0, 0, 0, 150))
-        painter.drawRoundedRect(overlay_rect, 10, 10)
-
-        icon = self._overlay_icon.pixmap(16, 16)
-        if not icon.isNull():
-            x = overlay_rect.x() + (overlay_rect.width() - icon.width()) // 2
-            y = overlay_rect.y() + (overlay_rect.height() - icon.height()) // 2
-            painter.drawPixmap(x, y, icon)
-        painter.end()
-
-    def _paint_inactive_border(self) -> None:
-        if not self._show_inactive_border:
-            return
-
-        pixmap = self.pixmap()
-        if pixmap is None or pixmap.isNull():
-            return
-
-        pixmap_rect = QRectF(pixmap.rect())
-        pixmap_rect.moveTo(self._pixmap_top_left(pixmap))
-
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        pen = QPen(self.palette().mid().color(), 1.0)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        border_rect = pixmap_rect.adjusted(0.5, 0.5, -0.5, -0.5)
-        if self._corner_radius > 0:
-            painter.drawRoundedRect(
-                border_rect,
-                self._corner_radius,
-                self._corner_radius,
-            )
-        else:
-            painter.drawRect(border_rect)
-        painter.end()
-
-    def _pixmap_top_left(self, pixmap: QPixmap) -> QPoint:
-        alignment = self.alignment()
-        if alignment & Qt.AlignmentFlag.AlignLeft:
-            x = 0
-        elif alignment & Qt.AlignmentFlag.AlignRight:
-            x = self.width() - pixmap.width()
-        else:
-            x = (self.width() - pixmap.width()) // 2
-
-        if alignment & Qt.AlignmentFlag.AlignTop:
-            y = 0
-        elif alignment & Qt.AlignmentFlag.AlignBottom:
-            y = self.height() - pixmap.height()
-        else:
-            y = (self.height() - pixmap.height()) // 2
-
-        return QPoint(x, y)
-
-    def _refresh_pixmap(self) -> None:
-        pixmap = self._source_pixmap or self._placeholder_pixmap
-        if pixmap.isNull():
-            self.setPixmap(QPixmap())
-            return
-
-        if self._source_pixmap is None:
-            self.setFrameShape(
-                QFrame.Shape.StyledPanel
-                if self._show_placeholder_frame and self._corner_radius <= 0
-                else QFrame.Shape.NoFrame
-            )
-            self.setPixmap(self._placeholder_display_pixmap())
-            return
-
-        self.setFrameShape(QFrame.Shape.NoFrame)
-        scaled_pixmap = pixmap.scaled(
-            self.size(),
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        if self._corner_radius > 0:
-            scaled_pixmap = self._rounded_pixmap(scaled_pixmap)
-        self.setPixmap(scaled_pixmap)
-
-    def _placeholder_display_pixmap(self) -> QPixmap:
-        target_size = self.size()
-        if target_size.width() <= 0 or target_size.height() <= 0:
-            return QPixmap()
-
-        canvas = QPixmap(target_size)
-        canvas.fill(self.palette().alternateBase().color())
-
-        icon_size = min(target_size.width(), target_size.height(), 32)
-        placeholder = self._placeholder_pixmap.scaled(
-            icon_size,
-            icon_size,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-
-        painter = QPainter(canvas)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        x = (target_size.width() - placeholder.width()) // 2
-        y = (target_size.height() - placeholder.height()) // 2
-        painter.drawPixmap(x, y, placeholder)
-        painter.end()
-        if self._corner_radius > 0:
-            return self._rounded_pixmap(canvas)
-        return canvas
-
-    def _rounded_pixmap(self, pixmap: QPixmap) -> QPixmap:
-        rounded = QPixmap(pixmap.size())
-        rounded.fill(Qt.GlobalColor.transparent)
-
-        painter = QPainter(rounded)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        path = QPainterPath()
-        path.addRoundedRect(
-            0,
-            0,
-            float(pixmap.width()),
-            float(pixmap.height()),
-            self._corner_radius,
-            self._corner_radius,
-        )
-        painter.setClipPath(path)
-        painter.drawPixmap(0, 0, pixmap)
-        painter.end()
-        return rounded
-
-
-class RatioPreviewPixmapLabel(PreviewPixmapLabel):
-    def __init__(
-        self,
-        placeholder: QPixmap,
-        ratio_width: int,
-        ratio_height: int,
-        parent: QWidget | None = None,
-        *,
-        corner_radius: float = 0.0,
-        show_placeholder_frame: bool = True,
-        show_inactive_border: bool = False,
-        pixmap_alignment: Qt.AlignmentFlag = Qt.AlignmentFlag.AlignCenter,
-    ) -> None:
-        super().__init__(
-            placeholder,
-            parent,
-            corner_radius=corner_radius,
-            show_placeholder_frame=show_placeholder_frame,
-            show_inactive_border=show_inactive_border,
-            pixmap_alignment=pixmap_alignment,
-        )
-        self._ratio_width = ratio_width
-        self._ratio_height = ratio_height
-
-    def resizeEvent(self, event) -> None:
-        target_height = max(
-            1, int(self.width() * self._ratio_height / self._ratio_width)
-        )
-        if (
-            self.minimumHeight() != target_height
-            or self.maximumHeight() != target_height
-        ):
-            self.setMinimumHeight(target_height)
-            self.setMaximumHeight(target_height)
-        super().resizeEvent(event)
-
-
-class LeftPaddingItemDelegate(QStyledItemDelegate):
-    def __init__(self, left_padding: int, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._left_padding = left_padding
-
-    def initStyleOption(self, option, index) -> None:
-        super().initStyleOption(option, index)
-        option.rect.adjust(self._left_padding, 0, 0, 0)
-
-
-class InlineDetailLineEdit(QLineEdit):
-    def minimumSizeHint(self) -> QSize:
-        hint = super().minimumSizeHint()
-        hint.setWidth(24)
-        return hint
-
-    def sizeHint(self) -> QSize:
-        hint = super().sizeHint()
-        hint.setWidth(280)
-        return hint
-
-
-class LoadingSpinner(QWidget):
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self._angle = 0
-        self._timer = QTimer(self)
-        self._timer.setInterval(80)
-        self._timer.timeout.connect(self._advance)
-        self.setFixedSize(48, 48)
-
-    def start(self) -> None:
-        self._angle = 0
-        self._timer.start()
-        self.update()
-
-    def stop(self) -> None:
-        self._timer.stop()
-        self.update()
-
-    def paintEvent(self, event) -> None:
-        super().paintEvent(event)
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.translate(self.width() / 2, self.height() / 2)
-        painter.rotate(self._angle)
-
-        color = self.palette().midlight().color()
-        pen = QPen(color, 3)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
-        painter.setPen(pen)
-
-        radius = min(self.width(), self.height()) / 2 - 8
-        for index in range(12):
-            color.setAlpha(40 + index * 16)
-            pen.setColor(color)
-            painter.setPen(pen)
-            painter.drawLine(0, int(-radius), 0, int(-radius + 8))
-            painter.rotate(30)
-
-        painter.end()
-
-    def _advance(self) -> None:
-        self._angle = (self._angle + 30) % 360
-        self.update()
-
-
-class ListLoadingOverlay(QWidget):
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        self.setAutoFillBackground(False)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(18)
-        layout.addStretch(1)
-
-        self._spinner = LoadingSpinner(self)
-        layout.addWidget(self._spinner, 0, Qt.AlignmentFlag.AlignCenter)
-
-        text = QLabel("Loading apps...", self)
-        text.setAutoFillBackground(False)
-        text.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-        text.setStyleSheet("color: palette(midlight);")
-        layout.addWidget(text, 0, Qt.AlignmentFlag.AlignCenter)
-        layout.addStretch(1)
-
-    def start(self) -> None:
-        self.show()
-        self.raise_()
-        self._spinner.start()
-
-    def stop(self) -> None:
-        self._spinner.stop()
-        self.hide()
-
-
-def _details_for_app(app: Any) -> dict[str, Any]:
-    name = (app.name or "").strip()
-    asset_paths = asset_paths_for_app(app.appid)
-    release_date, release_date_key = _release_date_details(app.data)
-    return {
-        "_raw_metadata": app.data,
-        "appid": str(app.appid),
-        "name": name or "–",
-        "sort_as": str(_sort_as_value(app.data) or "–"),
-        "aliases": _format_aliases(_aliases_value(app.data)),
-        "developer": str(_extended_value(app.data, "developer") or "–"),
-        "publisher": str(_extended_value(app.data, "publisher") or "–"),
-        "release_date": release_date,
-        "_release_date_key": release_date_key,
-        "header_path": asset_paths["header_path"],
-        "capsule_path": asset_paths["capsule_path"],
-        "hero_path": asset_paths["hero_path"],
-        "logo_path": asset_paths["logo_path"],
-        "logo_position": _library_logo_position(app.data),
-        "icon_path": asset_paths["icon_path"],
-    }
-
-
-def _read_app_rows(
-    path: Path,
-) -> tuple[list[tuple[int, str]], dict[int, dict[str, Any]], dict[int, bool]]:
-    rows: list[tuple[int, str]] = []
-    details_by_appid: dict[int, dict[str, Any]] = {}
-    filter_matches_by_appid: dict[int, bool] = {}
-
-    with AppInfoFile.open(path) as appinfo:
-        for app in appinfo.iter_apps():
-            name = (app.name or "").strip()
-            if not name:
-                continue
-
-            rows.append((app.appid, name))
-            filter_matches_by_appid[app.appid] = _matches_game_filter(app.data)
-            details_by_appid[app.appid] = _details_for_app(app)
-
-    return rows, details_by_appid, filter_matches_by_appid
-
-
-class AppLoadWorker(QObject):
-    loaded = Signal(object)
-    failed = Signal(str)
-    finished = Signal()
-
-    def __init__(self, path: str) -> None:
-        super().__init__()
-        self._path = path
-
-    @Slot()
-    def run(self) -> None:
-        try:
-            path_obj = Path(self._path).expanduser()
-            if not path_obj.is_file():
-                raise FileNotFoundError(f"Path is not a file:\n{path_obj}")
-
-            rows, details_by_appid, filter_matches_by_appid = _read_app_rows(path_obj)
-            self.loaded.emit(
-                (path_obj, rows, details_by_appid, filter_matches_by_appid)
-            )
-        except Exception as exc:
-            self.failed.emit(str(exc))
-        finally:
-            self.finished.emit()
+from steammetadatatool.gui.services.search import normalized_search_text
+from steammetadatatool.gui.steam.process import is_steam_running
+from steammetadatatool.gui.widgets.delegates import LeftPaddingItemDelegate
+from steammetadatatool.gui.widgets.inline_edit import InlineDetailLineEdit
+from steammetadatatool.gui.widgets.loading import ListLoadingOverlay
+from steammetadatatool.gui.widgets.previews import (
+    PreviewPixmapLabel,
+    RatioPreviewPixmapLabel,
+)
 
 
 class MainWindow(QMainWindow):
@@ -876,7 +130,7 @@ class MainWindow(QMainWindow):
             show_inactive_border=True,
         )
         self._edit_overlay_icon = QIcon(
-            _monochrome_icon_pixmap(
+            monochrome_icon_pixmap(
                 QIcon.fromTheme(
                     "document-edit",
                     self.style().standardIcon(
@@ -901,7 +155,7 @@ class MainWindow(QMainWindow):
         )
         search_icon_color = self.palette().placeholderText().color()
         self._search_input.addAction(
-            QIcon(_monochrome_icon_pixmap(search_icon, 16, search_icon_color)),
+            QIcon(monochrome_icon_pixmap(search_icon, 16, search_icon_color)),
             QLineEdit.ActionPosition.LeadingPosition,
         )
         self._search_input.setClearButtonEnabled(True)
@@ -915,7 +169,7 @@ class MainWindow(QMainWindow):
         button_size = self._search_input.sizeHint().height()
         filter_icon_color = self.palette().placeholderText().color()
         self._filter_button.setIcon(
-            QIcon(_monochrome_icon_pixmap(filter_icon, 18, filter_icon_color))
+            QIcon(monochrome_icon_pixmap(filter_icon, 18, filter_icon_color))
         )
         self._filter_button.setToolTip("Show only games with metadata")
         self._filter_button.setAutoRaise(True)
@@ -1082,7 +336,7 @@ class MainWindow(QMainWindow):
                 self._appinfo_required_preview_labels.append(value_label)
                 self._asset_image_labels[key] = value_label
             else:
-                if key in _INLINE_EDIT_METADATA_KEYS:
+                if key in INLINE_EDIT_METADATA_KEYS:
                     value_label = InlineDetailLineEdit()
                     value_label.setMinimumWidth(0)
                     value_label.setSizePolicy(
@@ -1090,7 +344,7 @@ class MainWindow(QMainWindow):
                         QSizePolicy.Policy.Fixed,
                     )
                     value_label.setFrame(False)
-                    value_label.setStyleSheet(_INLINE_DETAIL_EDITOR_STYLE)
+                    value_label.setStyleSheet(INLINE_DETAIL_EDITOR_STYLE)
                     value_label.installEventFilter(self)
                     value_label.returnPressed.connect(
                         lambda detail_key=key: self._commit_inline_detail_edit(
@@ -1107,7 +361,7 @@ class MainWindow(QMainWindow):
                         QSizePolicy.Policy.Preferred,
                     )
                     if key == "appid":
-                        value_label.setIndent(_DETAIL_VALUE_LEFT_INSET)
+                        value_label.setIndent(DETAIL_VALUE_LEFT_INSET)
                     value_label.setAlignment(
                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
                     )
@@ -1119,7 +373,7 @@ class MainWindow(QMainWindow):
             if key == "icon_path":
                 icon_container = QWidget()
                 icon_container.setFixedSize(
-                    self._asset_image_specs[key][0] + _DETAIL_VALUE_LEFT_INSET,
+                    self._asset_image_specs[key][0] + DETAIL_VALUE_LEFT_INSET,
                     self._asset_image_specs[key][1],
                 )
                 icon_container.setSizePolicy(
@@ -1127,7 +381,7 @@ class MainWindow(QMainWindow):
                     QSizePolicy.Policy.Fixed,
                 )
                 icon_layout = QHBoxLayout(icon_container)
-                icon_layout.setContentsMargins(_DETAIL_VALUE_LEFT_INSET, 0, 0, 0)
+                icon_layout.setContentsMargins(DETAIL_VALUE_LEFT_INSET, 0, 0, 0)
                 icon_layout.setSpacing(0)
                 icon_layout.addWidget(value_label)
                 row_value_widget = icon_container
@@ -1265,7 +519,7 @@ class MainWindow(QMainWindow):
             self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon),
         )
         metadata_button_icon = QIcon(
-            _monochrome_icon_pixmap(
+            monochrome_icon_pixmap(
                 metadata_icon, 24, filter_icon_color, right_padding=0
             )
         )
@@ -1285,7 +539,7 @@ class MainWindow(QMainWindow):
             self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon),
         )
         assets_button_icon = QIcon(
-            _monochrome_icon_pixmap(assets_icon, 24, filter_icon_color, right_padding=0)
+            monochrome_icon_pixmap(assets_icon, 24, filter_icon_color, right_padding=0)
         )
         edit_assets_button = QPushButton(assets_button_icon, "Edit Assets")
         edit_assets_button.setSizePolicy(
@@ -1466,7 +720,7 @@ class MainWindow(QMainWindow):
         editor = self._detail_editors.get(detail_key)
         appid = self._current_selected_appid()
         details = self._details_by_appid.get(appid) if appid is not None else None
-        metadata_key = _INLINE_EDIT_METADATA_KEYS.get(detail_key)
+        metadata_key = INLINE_EDIT_METADATA_KEYS.get(detail_key)
         if detail_key == "release_date" and details is not None:
             release_date_key = str(
                 details.get("_release_date_key") or "original_release_date"
@@ -1478,8 +732,8 @@ class MainWindow(QMainWindow):
         old_text = str(details.get(detail_key, ""))
         new_text = editor.text().strip()
         try:
-            old_value = _detail_text_to_metadata_value(detail_key, old_text)
-            new_value = _detail_text_to_metadata_value(detail_key, new_text)
+            old_value = detail_text_to_metadata_value(detail_key, old_text)
+            new_value = detail_text_to_metadata_value(detail_key, new_text)
             if new_value == old_value:
                 if app_data_path("metadata.json").exists():
                     self._write_inline_metadata_change(
@@ -1539,13 +793,13 @@ class MainWindow(QMainWindow):
 
         metadata_path = app_data_path("metadata.json")
         metadata_overrides = (
-            _metadata_overrides_from_apps_payload(metadata_payload)
+            metadata_overrides_from_apps_payload(metadata_payload)
             if metadata_payload is not None
             else load_metadata_file(metadata_path)
             if metadata_path.exists()
             else {}
         )
-        values = _merge_metadata_override_values(
+        values = merge_metadata_override_values(
             dict(metadata_overrides.get(appid, {})),
             metadata_values_from_change_entries(
                 changes,
@@ -1706,7 +960,7 @@ class MainWindow(QMainWindow):
         self._refresh_appinfo_required_widgets()
 
         try:
-            rows, details_by_appid, filter_matches_by_appid = _read_app_rows(path_obj)
+            rows, details_by_appid, filter_matches_by_appid = read_app_rows(path_obj)
         except Exception as exc:
             QMessageBox.critical(self, "SteamMetadataTool", str(exc))
             return
@@ -1758,9 +1012,9 @@ class MainWindow(QMainWindow):
 
         with AppInfoFile.open(self._appinfo_path) as appinfo:
             for app in appinfo.iter_apps(appids=[appid]):
-                details = _details_for_app(app)
+                details = details_for_app(app)
                 self._details_by_appid[appid] = details
-                self._filter_matches_by_appid[appid] = _matches_game_filter(app.data)
+                self._filter_matches_by_appid[appid] = matches_game_filter(app.data)
                 self._update_table_row_for_app(appid, str(details.get("name", "–")))
                 if self._current_selected_appid() == appid:
                     self._set_details(details)
@@ -2007,8 +1261,8 @@ class MainWindow(QMainWindow):
         side_padding = 32
         top_padding = 16
         bottom_padding = 128
-        width_pct = _float_value(logo_position.get("width_pct"))
-        height_pct = _float_value(logo_position.get("height_pct"))
+        width_pct = float_value(logo_position.get("width_pct"))
+        height_pct = float_value(logo_position.get("height_pct"))
         if width_pct is None or height_pct is None:
             return None
 

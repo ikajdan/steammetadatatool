@@ -10,7 +10,7 @@ from pathlib import Path
 from PySide6.QtCore import QSize, Qt
 from PySide6.QtGui import QImage, QImageReader
 
-from steammetadatatool.gui.app_data import app_data_path
+from steammetadatatool.gui.data.app_data import app_data_path
 
 _ASSET_OPTIMIZATION_TARGETS = {
     "capsule": QSize(600, 900),

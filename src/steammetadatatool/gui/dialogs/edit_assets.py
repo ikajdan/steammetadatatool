@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 from PySide6.QtCore import (
     QEasingCurve,
@@ -48,18 +48,19 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from steammetadatatool.gui.app_data import app_data_path
-from steammetadatatool.gui.app_theme import COLORS
-from steammetadatatool.gui.edit_metadata_dialog import (
-    ElidedLabel,
-    _monochrome_icon_pixmap,
-)
-from steammetadatatool.gui.steam_user import (
+from steammetadatatool.gui.data.app_data import app_data_path
+from steammetadatatool.gui.services.theme import COLORS
+from steammetadatatool.gui.dialogs.edit_metadata import ElidedLabel
+from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
+from steammetadatatool.gui.data.json_helpers import validate_json_file_version
+from steammetadatatool.gui.steam.assets import (
+    STEAM_GRID_BASENAME_SUFFIXES as _STEAM_GRID_BASENAME_SUFFIXES,
+    STEAM_GRID_EXTENSIONS as _STEAM_GRID_EXTENSIONS,
     cached_icon_path_for_app,
     default_icon_path_for_app,
     original_icon_path_for_cached_icon,
-    steam_grid_dir,
 )
+from steammetadatatool.gui.steam.paths import steam_grid_dir
 
 _CUSTOM_ASSET_DIRS = {
     "capsule_path": "capsule",
@@ -95,13 +96,6 @@ _ASSET_PREVIEW_MAX_WIDTHS = {
     "logo_path": 320,
     "icon_path": 64,
 }
-_STEAM_GRID_BASENAME_SUFFIXES = {
-    "capsule_path": "p",
-    "header_path": "",
-    "hero_path": "_hero",
-    "logo_path": "_logo",
-}
-_STEAM_GRID_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 _CUSTOM_ASSET_IMAGE_FILTER = (
     "Images (*.png *.jpg *.jpeg);;"
     "PNG images (*.png);;"
@@ -211,7 +205,7 @@ def _load_assets_manifest() -> dict[str, object]:
 
     version = data.get("version")
     if version is not None:
-        _validate_json_file_version(
+        validate_json_file_version(
             version,
             current_version=_ASSETS_MANIFEST_VERSION,
             file_description="assets manifest",
@@ -220,18 +214,6 @@ def _load_assets_manifest() -> dict[str, object]:
         data["version"] = _ASSETS_MANIFEST_VERSION
 
     return data
-
-
-def _validate_json_file_version(
-    version: Any, *, current_version: int, file_description: str
-) -> None:
-    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
-        raise ValueError(f"{file_description}: version must be a positive integer")
-    if version > current_version:
-        raise ValueError(
-            f"{file_description}: unsupported version {version} "
-            f"(latest supported is {current_version})"
-        )
 
 
 def _selected_asset_names_for_app(appid: str | None) -> dict[str, str]:
@@ -875,7 +857,7 @@ class EditAssetsDialog(QDialog):
             self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon),
         )
         open_folder_button = QPushButton(
-            QIcon(_monochrome_icon_pixmap(folder_icon, 18, action_icon_color, 6)),
+            QIcon(monochrome_icon_pixmap(folder_icon, 18, action_icon_color, 6)),
             "Open Assets Folder",
             header_row,
         )
@@ -952,7 +934,7 @@ class EditAssetsDialog(QDialog):
             self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton),
         )
         self._apply_button = QPushButton(
-            QIcon(_monochrome_icon_pixmap(apply_icon, 24, action_icon_color)),
+            QIcon(monochrome_icon_pixmap(apply_icon, 24, action_icon_color)),
             "Apply",
             dialog_actions,
         )
@@ -971,7 +953,7 @@ class EditAssetsDialog(QDialog):
             self.style().standardIcon(QStyle.StandardPixmap.SP_DialogCloseButton),
         )
         close_button = QPushButton(
-            QIcon(_monochrome_icon_pixmap(close_icon, 24, action_icon_color)),
+            QIcon(monochrome_icon_pixmap(close_icon, 24, action_icon_color)),
             "Close",
             dialog_actions,
         )
@@ -1792,7 +1774,7 @@ class EditAssetsDialog(QDialog):
         )
         symbol_scale = 0.5 if asset_key == "icon_path" else 0.8
         symbol_size = max(8, int(icon_size * symbol_scale))
-        symbol = _monochrome_icon_pixmap(add_icon, symbol_size, icon_color)
+        symbol = monochrome_icon_pixmap(add_icon, symbol_size, icon_color)
         x = (pixmap.width() - symbol.width()) // 2
         y = (pixmap.height() - symbol.height()) // 2
         painter.drawPixmap(x, y, symbol)

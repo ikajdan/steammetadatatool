@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, BinaryIO, Callable
 
 from .binary import BinaryReader, Color, read_cstring
-from .keyvalues1 import KV1StringTable, read_kv1_object
+from .keyvalues import KV1StringTable, read_kv1_object
 
 
 @dataclass

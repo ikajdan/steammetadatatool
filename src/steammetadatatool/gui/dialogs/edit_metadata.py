@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 from PySide6.QtCore import QEvent, QRect, QSize, Qt
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
@@ -27,28 +27,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from steammetadatatool.gui.app_data import app_data_path
+from steammetadatatool.gui.data.app_data import app_data_path
+from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
+from steammetadatatool.gui.data.json_helpers import validate_json_file_version
 
 _METADATA_FILE_VERSION = 1
-
-
-def _monochrome_icon_pixmap(
-    icon: QIcon, size: int, color: QColor, right_padding: int = 0
-) -> QPixmap:
-    pixmap = icon.pixmap(size, size)
-    if pixmap.isNull():
-        return pixmap
-
-    monochrome = QPixmap(pixmap.width() + right_padding, pixmap.height())
-    monochrome.fill(Qt.GlobalColor.transparent)
-
-    painter = QPainter(monochrome)
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
-    painter.drawPixmap(0, 0, pixmap)
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-    painter.fillRect(monochrome.rect(), color)
-    painter.end()
-    return monochrome
 
 
 def _format_metadata_value(value: Any) -> str:
@@ -94,7 +77,7 @@ def _normalize_metadata_payload(data: Any) -> list[dict[str, Any]]:
     if isinstance(data, dict):
         version = data.get("version")
         if version is not None:
-            _validate_json_file_version(
+            validate_json_file_version(
                 version,
                 current_version=_METADATA_FILE_VERSION,
                 file_description="metadata file",
@@ -114,18 +97,6 @@ def _metadata_payload(apps: list[dict[str, Any]]) -> dict[str, Any]:
     if apps:
         payload["apps"] = apps
     return payload
-
-
-def _validate_json_file_version(
-    version: Any, *, current_version: int, file_description: str
-) -> None:
-    if not isinstance(version, int) or isinstance(version, bool) or version < 1:
-        raise ValueError(f"{file_description}: version must be a positive integer")
-    if version > current_version:
-        raise ValueError(
-            f"{file_description}: unsupported version {version} "
-            f"(latest supported is {current_version})"
-        )
 
 
 class ElidedLabel(QLabel):
@@ -251,7 +222,7 @@ class EditMetadataDialog(QDialog):
         action_icon_color = self.palette().placeholderText().color()
         self._readonly_text_color = self.palette().placeholderText().color()
         self._revert_icon = QIcon(
-            _monochrome_icon_pixmap(
+            monochrome_icon_pixmap(
                 QIcon.fromTheme(
                     "edit-undo",
                     self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowBack),
@@ -286,7 +257,7 @@ class EditMetadataDialog(QDialog):
             self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView),
         )
         self._search_input.addAction(
-            QIcon(_monochrome_icon_pixmap(search_icon, 16, action_icon_color)),
+            QIcon(monochrome_icon_pixmap(search_icon, 16, action_icon_color)),
             QLineEdit.ActionPosition.LeadingPosition,
         )
         self._search_input.setClearButtonEnabled(True)
@@ -361,7 +332,7 @@ class EditMetadataDialog(QDialog):
             self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton),
         )
         apply_button = QPushButton(
-            QIcon(_monochrome_icon_pixmap(apply_icon, 24, action_icon_color)),
+            QIcon(monochrome_icon_pixmap(apply_icon, 24, action_icon_color)),
             "Apply",
             dialog_actions,
         )
@@ -382,7 +353,7 @@ class EditMetadataDialog(QDialog):
             self.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton),
         )
         cancel_button = QPushButton(
-            QIcon(_monochrome_icon_pixmap(cancel_icon, 24, action_icon_color)),
+            QIcon(monochrome_icon_pixmap(cancel_icon, 24, action_icon_color)),
             "Close",
             dialog_actions,
         )

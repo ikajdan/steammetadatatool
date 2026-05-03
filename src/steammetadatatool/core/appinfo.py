@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, BinaryIO, Iterable, Iterator
 
 from .binary import BinaryReader, read_cstring
-from .keyvalues1 import KV1StringTable, kv_deep_get, read_kv1_object
+from .keyvalues import KV1StringTable, kv_deep_get, read_kv1_object
 
 
 class Universe(IntEnum):
