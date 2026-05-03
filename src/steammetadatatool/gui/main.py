@@ -574,6 +574,9 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
         self._set_details(None)
         self._refresh_appinfo_required_widgets()
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
 
     def _open_edit_metadata_dialog(self) -> None:
         appid = self._current_selected_appid()
@@ -1147,6 +1150,9 @@ class MainWindow(QMainWindow):
                     watched.clearFocus()
                 return True
 
+        if self._handle_window_shortcut(watched, event):
+            return True
+
         if watched is self._details_form_container and event.type() in {
             QEvent.Type.Resize,
             QEvent.Type.Show,
@@ -1154,6 +1160,55 @@ class MainWindow(QMainWindow):
         }:
             self._sync_capsule_preview_size()
         return super().eventFilter(watched, event)
+
+    def _handle_window_shortcut(self, watched: QObject, event: QEvent) -> bool:
+        if not self.isActiveWindow() or event.type() != QEvent.Type.KeyPress:
+            return False
+        if not hasattr(event, "key") or not hasattr(event, "modifiers"):
+            return False
+
+        key = event.key()
+        modifiers = event.modifiers()
+        control_pressed = bool(modifiers & Qt.KeyboardModifier.ControlModifier)
+        meaningful_modifiers = modifiers & (
+            Qt.KeyboardModifier.ShiftModifier
+            | Qt.KeyboardModifier.ControlModifier
+            | Qt.KeyboardModifier.AltModifier
+            | Qt.KeyboardModifier.MetaModifier
+        )
+
+        if key == Qt.Key.Key_F and control_pressed:
+            self._focus_search()
+            return True
+
+        if key == Qt.Key.Key_Slash and not meaningful_modifiers:
+            if isinstance(watched, QLineEdit):
+                return False
+            self._focus_search()
+            return True
+
+        if key == Qt.Key.Key_Escape and self._search_input.text():
+            self._search_input.clear()
+            self._search_input.setFocus(Qt.FocusReason.ShortcutFocusReason)
+            return True
+
+        if key not in {Qt.Key.Key_Return, Qt.Key.Key_Enter}:
+            return False
+        if meaningful_modifiers:
+            return False
+        focus_widget = QApplication.focusWidget()
+        if isinstance(focus_widget, (QLineEdit, QPushButton, QToolButton)):
+            return False
+
+        self._open_edit_metadata_dialog()
+        return True
+
+    def _focus_search(self) -> None:
+        if not self._search_input.isEnabled():
+            return
+
+        self._search_input.setFocus(Qt.FocusReason.ShortcutFocusReason)
+        self._search_input.selectAll()
 
     def _sync_capsule_preview_size(self) -> None:
         if self._details_form_container is None:
