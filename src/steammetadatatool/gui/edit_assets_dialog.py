@@ -1062,7 +1062,7 @@ class EditAssetsDialog(QDialog):
         )
 
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(0, 14, 0, 14)
+        layout.setContentsMargins(0, 10, 0, 14)
         layout.setSpacing(10)
 
         title_row = QWidget(card)
@@ -1071,7 +1071,7 @@ class EditAssetsDialog(QDialog):
         title_row_layout.setSpacing(8)
 
         title_label = QLabel(title, title_row)
-        title_label.setStyleSheet("font-weight: 600;")
+        title_label.setStyleSheet("font-size: 16px; font-weight: 600;")
         title_row_layout.addWidget(title_label)
 
         unapplied_label = QLabel("Unapplied", title_row)
@@ -1088,6 +1088,7 @@ class EditAssetsDialog(QDialog):
         title_row_layout.addWidget(unapplied_label)
         title_row_layout.addStretch(1)
         layout.addWidget(title_row)
+        layout.addSpacing(28)
         show_selection_frame = True
         draw_variant_frame = True
         self._asset_variant_counts[key] = 1 + len(custom_paths)
