@@ -51,6 +51,7 @@ def execute_cli_request(request: CliRequest) -> CliExecutionResult:
             overrides=request.overrides,
             metadata_overrides=metadata_overrides,
             write_out=request.write_out,
+            create_backup=not request.no_backup,
         )
 
         if request.metadata_file is not None:

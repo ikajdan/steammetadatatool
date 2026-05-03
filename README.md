@@ -181,6 +181,19 @@ uv run steammetadatatool-cli \
   --metadata-file metadata.json
 ```
 
+### Backup Strategy
+
+When the CLI overwrites `appinfo.vdf`, it creates a timestamped `.bak` file next to the original, such as `appinfo.vdf_20260503T120000.000000Z.bak`.
+
+To overwrite `appinfo.vdf` without creating a backup, pass `--no-backup`:
+
+```bash
+uv run steammetadatatool-cli \
+  --appid 10 \
+  --name "Counter-Strike 1.6" \
+  --no-backup
+```
+
 Set arbitrary KV path:
 
 ```bash

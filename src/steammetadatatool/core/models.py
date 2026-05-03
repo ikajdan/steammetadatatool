@@ -35,6 +35,7 @@ class CliRequest:
     overrides: OverrideInput = field(default_factory=OverrideInput)
     metadata_file: Path | None = None
     write_out: Path | None = None
+    no_backup: bool = False
     dry_run: bool = False
     as_json: bool = False
 

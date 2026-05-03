@@ -80,6 +80,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write a modified appinfo.vdf to this path instead of overwriting the input",
     )
     parser.add_argument(
+        "--no-backup",
+        dest="no_backup",
+        action="store_true",
+        help="Overwrite appinfo.vdf without creating a timestamped backup",
+    )
+    parser.add_argument(
         "--dry-run",
         dest="dry_run",
         action="store_true",
@@ -111,6 +117,7 @@ def main() -> int:
         ),
         metadata_file=args.metadata_file,
         write_out=args.write_out,
+        no_backup=args.no_backup,
         dry_run=args.dry_run,
         as_json=args.as_json,
     )

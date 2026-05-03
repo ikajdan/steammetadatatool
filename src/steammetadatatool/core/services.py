@@ -208,6 +208,7 @@ def write_modified_appinfo(
     overrides: OverrideInput,
     metadata_overrides: MetadataMap,
     write_out: Path | None,
+    create_backup: bool = True,
 ) -> Path:
     if write_out is not None:
         rewrite_appinfo(
@@ -240,8 +241,9 @@ def write_modified_appinfo(
             ),
         )
 
-        backup_path = _timestamped_backup_path(path)
-        path.replace(backup_path)
+        if create_backup:
+            backup_path = _timestamped_backup_path(path)
+            path.replace(backup_path)
         tmp_path.replace(path)
         return path
     finally:
