@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
+    QStackedLayout,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -28,8 +29,9 @@ from PySide6.QtWidgets import (
 )
 
 from steammetadatatool.gui.data.app_data import app_data_path
-from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
 from steammetadatatool.gui.data.json_helpers import validate_json_file_version
+from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
+from steammetadatatool.gui.widgets.empty_state import EmptyStateOverlay
 
 _METADATA_FILE_VERSION = 1
 
@@ -219,6 +221,7 @@ class EditMetadataDialog(QDialog):
         self._saved_entries = self._entries_with_saved_changes(dict(entries))
         self._search_text = ""
         self._apply_button: QPushButton | None = None
+        self._empty_search_overlay: EmptyStateOverlay | None = None
         action_icon_color = self.palette().placeholderText().color()
         self._readonly_text_color = self.palette().placeholderText().color()
         self._revert_icon = QIcon(
@@ -317,7 +320,23 @@ class EditMetadataDialog(QDialog):
         metadata_table.itemChanged.connect(self._on_metadata_item_changed)
         metadata_table.setSortingEnabled(True)
         metadata_table.sortItems(0, Qt.SortOrder.AscendingOrder)
-        dialog_layout.addWidget(metadata_table)
+
+        table_stack = QWidget(self)
+        table_stack_layout = QStackedLayout(table_stack)
+        table_stack_layout.setContentsMargins(0, 0, 0, 0)
+        table_stack_layout.setStackingMode(QStackedLayout.StackingMode.StackAll)
+        table_stack_layout.addWidget(metadata_table)
+
+        empty_search_overlay = EmptyStateOverlay(
+            QIcon(monochrome_icon_pixmap(search_icon, 40, action_icon_color)),
+            "No Results Found",
+            parent=table_stack,
+        )
+        empty_search_overlay.hide()
+        self._empty_search_overlay = empty_search_overlay
+        table_stack_layout.addWidget(empty_search_overlay)
+
+        dialog_layout.addWidget(table_stack)
         self._apply_table_filter("")
         self._refresh_unsaved_change_styles()
 
@@ -695,6 +714,7 @@ class EditMetadataDialog(QDialog):
     def _apply_table_filter(self, text: str) -> None:
         self._search_text = text.strip().casefold()
 
+        first_visible_row: int | None = None
         for row in range(self._metadata_table.rowCount()):
             key_item = self._metadata_table.item(row, 0)
             value_item = self._metadata_table.item(row, 1)
@@ -709,9 +729,26 @@ class EditMetadataDialog(QDialog):
                 or self._search_text in value_text.casefold()
             )
             self._metadata_table.setRowHidden(row, not matches)
+            if matches and first_visible_row is None:
+                first_visible_row = row
+
+        show_empty_search = (
+            self._metadata_table.rowCount() > 0
+            and first_visible_row is None
+            and bool(self._search_text)
+        )
+        self._set_empty_search_visible(show_empty_search)
 
         self._select_first_visible_row()
         self._metadata_table.viewport().update()
+
+    def _set_empty_search_visible(self, visible: bool) -> None:
+        if self._empty_search_overlay is None:
+            return
+
+        self._empty_search_overlay.setVisible(visible)
+        if visible:
+            self._empty_search_overlay.raise_()
 
     def _apply_column_ratio(self) -> None:
         viewport_width = self._metadata_table.viewport().width()
@@ -755,3 +792,5 @@ class EditMetadataDialog(QDialog):
 
             self._metadata_table.setCurrentItem(item)
             return
+
+        self._metadata_table.clearSelection()

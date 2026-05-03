@@ -83,6 +83,7 @@ from steammetadatatool.gui.dialogs.missing_appinfo import (
 from steammetadatatool.gui.services.search import normalized_search_text
 from steammetadatatool.gui.steam.process import is_steam_running
 from steammetadatatool.gui.widgets.delegates import LeftPaddingItemDelegate
+from steammetadatatool.gui.widgets.empty_state import EmptyStateOverlay
 from steammetadatatool.gui.widgets.inline_edit import InlineDetailLineEdit
 from steammetadatatool.gui.widgets.loading import ListLoadingOverlay
 from steammetadatatool.gui.widgets.previews import (
@@ -113,6 +114,7 @@ class MainWindow(QMainWindow):
         self._appinfo_required_preview_labels: list[PreviewPixmapLabel] = []
         self._filter_matches_by_appid: dict[int, bool] = {}
         self._list_loading_overlay: ListLoadingOverlay | None = None
+        self._empty_search_overlay: EmptyStateOverlay | None = None
         self._pixmap_cache: dict[str, QPixmap] = {}
         self._composited_hero_cache: dict[tuple[str, str, str], QPixmap] = {}
         self._asset_image_specs: dict[str, tuple[int, int]] = {
@@ -220,6 +222,19 @@ class MainWindow(QMainWindow):
         table_stack_layout.setContentsMargins(0, 0, 0, 0)
         table_stack_layout.setStackingMode(QStackedLayout.StackingMode.StackAll)
         table_stack_layout.addWidget(self._table)
+
+        empty_search_icon = QIcon.fromTheme(
+            "edit-find",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView),
+        )
+        empty_search_overlay = EmptyStateOverlay(
+            QIcon(monochrome_icon_pixmap(empty_search_icon, 40, search_icon_color)),
+            "No Results Found",
+            parent=table_stack,
+        )
+        empty_search_overlay.hide()
+        self._empty_search_overlay = empty_search_overlay
+        table_stack_layout.addWidget(empty_search_overlay)
 
         list_loading_overlay = ListLoadingOverlay(table_stack)
         list_loading_overlay.hide()
@@ -899,6 +914,7 @@ class MainWindow(QMainWindow):
         self._appinfo_path = None
         self._table.setRowCount(0)
         self._set_details(None)
+        self._set_empty_search_visible(False)
         self._search_input.setEnabled(False)
         self._table.setEnabled(False)
         self._refresh_appinfo_required_widgets()
@@ -957,6 +973,7 @@ class MainWindow(QMainWindow):
         self._appinfo_path = None
         self._table.setRowCount(0)
         self._set_details(None)
+        self._set_empty_search_visible(False)
         self._refresh_appinfo_required_widgets()
 
         try:
@@ -1371,6 +1388,14 @@ class MainWindow(QMainWindow):
 
         self._set_details(self._details_by_appid.get(appid))
 
+    def _set_empty_search_visible(self, visible: bool) -> None:
+        if self._empty_search_overlay is None:
+            return
+
+        self._empty_search_overlay.setVisible(visible)
+        if visible:
+            self._empty_search_overlay.raise_()
+
     def _apply_table_filter(self, text: str) -> None:
         self._search_text = normalized_search_text(text)
 
@@ -1407,6 +1432,14 @@ class MainWindow(QMainWindow):
                 first_visible_row = row
             if matches and row == current_row:
                 current_row_visible = True
+
+        show_empty_search = (
+            self._appinfo_path is not None
+            and self._table.rowCount() > 0
+            and first_visible_row is None
+            and bool(self._search_text)
+        )
+        self._set_empty_search_visible(show_empty_search)
 
         if current_row_visible:
             return
