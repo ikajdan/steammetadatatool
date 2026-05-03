@@ -208,14 +208,27 @@ def _format_release_date(value: Any) -> str:
         return str(unix_value)
 
 
+def _release_date_details(data: dict[str, Any]) -> tuple[str, str]:
+    original_release_date = _format_release_date(
+        _common_value(data, "original_release_date")
+    )
+    if original_release_date != "–":
+        return original_release_date, "original_release_date"
+
+    steam_release_date = _format_release_date(_common_value(data, "steam_release_date"))
+    if steam_release_date != "–":
+        return steam_release_date, "steam_release_date"
+
+    return "–", "original_release_date"
+
+
 _INLINE_EDIT_METADATA_KEYS = {
     "name": "appinfo.common.name",
     "sort_as": "appinfo.common.sortas",
     "aliases": "appinfo.common.aliases",
     "developer": "appinfo.extended.developer",
     "publisher": "appinfo.extended.publisher",
-    "original_release_date": "appinfo.common.original_release_date",
-    "steam_release_date": "appinfo.common.steam_release_date",
+    "release_date": "appinfo.common.original_release_date",
 }
 
 
@@ -757,6 +770,7 @@ class ListLoadingOverlay(QWidget):
 def _details_for_app(app: Any) -> dict[str, Any]:
     name = (app.name or "").strip()
     asset_paths = asset_paths_for_app(app.appid)
+    release_date, release_date_key = _release_date_details(app.data)
     return {
         "_raw_metadata": app.data,
         "appid": str(app.appid),
@@ -765,12 +779,8 @@ def _details_for_app(app: Any) -> dict[str, Any]:
         "aliases": _format_aliases(_aliases_value(app.data)),
         "developer": str(_extended_value(app.data, "developer") or "–"),
         "publisher": str(_extended_value(app.data, "publisher") or "–"),
-        "original_release_date": _format_release_date(
-            _common_value(app.data, "original_release_date")
-        ),
-        "steam_release_date": _format_release_date(
-            _common_value(app.data, "steam_release_date")
-        ),
+        "release_date": release_date,
+        "_release_date_key": release_date_key,
         "header_path": asset_paths["header_path"],
         "capsule_path": asset_paths["capsule_path"],
         "hero_path": asset_paths["hero_path"],
@@ -981,7 +991,7 @@ class MainWindow(QMainWindow):
 
         details_content_widget = QWidget()
         details_content_layout = QHBoxLayout(details_content_widget)
-        details_content_layout.setContentsMargins(0, 0, 0, 0)
+        details_content_layout.setContentsMargins(0, 12, 0, 0)
         details_content_layout.setSpacing(24)
         details_outer_layout.addWidget(details_content_widget)
         details_outer_layout.addSpacing(12)
@@ -1007,7 +1017,7 @@ class MainWindow(QMainWindow):
 
         details_form_container = QWidget()
         self._details_form_container = details_form_container
-        details_form_container.setMinimumWidth(285)
+        details_form_container.setMinimumWidth(250)
         details_form_container.installEventFilter(self)
         details_content_layout.addWidget(
             details_form_container, 2, Qt.AlignmentFlag.AlignTop
@@ -1015,7 +1025,7 @@ class MainWindow(QMainWindow):
 
         details_layout = QFormLayout(details_form_container)
         details_layout.setContentsMargins(0, 0, 0, 0)
-        details_layout.setHorizontalSpacing(20)
+        details_layout.setHorizontalSpacing(4)
         details_layout.setVerticalSpacing(10)
         details_layout.setFormAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
@@ -1039,8 +1049,7 @@ class MainWindow(QMainWindow):
             ("developer", "Developer"),
             ("publisher", "Publisher"),
             ("_separator_3", ""),
-            ("original_release_date", "Original Release Date"),
-            ("steam_release_date", "Steam Release Date"),
+            ("release_date", "Release Date"),
         )
         for key, title in fields:
             if key.startswith("_separator_"):
@@ -1051,7 +1060,7 @@ class MainWindow(QMainWindow):
                 continue
 
             title_label = QLabel(f"{title}:")
-            title_label.setFixedWidth(175)
+            title_label.setFixedWidth(140)
             title_label.setStyleSheet("font-weight: 600;")
 
             if key in self._asset_image_specs:
@@ -1075,9 +1084,8 @@ class MainWindow(QMainWindow):
                 if key in _INLINE_EDIT_METADATA_KEYS:
                     value_label = InlineDetailLineEdit()
                     value_label.setMinimumWidth(0)
-                    value_label.setMaximumWidth(280)
                     value_label.setSizePolicy(
-                        QSizePolicy.Policy.Maximum,
+                        QSizePolicy.Policy.Expanding,
                         QSizePolicy.Policy.Fixed,
                     )
                     value_label.setFrame(False)
@@ -1139,8 +1147,8 @@ class MainWindow(QMainWindow):
         assets_widget = QWidget()
         self._assets_widget = assets_widget
         assets_layout = QVBoxLayout(assets_widget)
-        assets_layout.setContentsMargins(0, 0, 0, 0)
-        assets_layout.setSpacing(18)
+        assets_layout.setContentsMargins(0, 12, 0, 0)
+        assets_layout.setSpacing(22)
         details_outer_layout.addWidget(assets_widget)
 
         def create_asset_box(
@@ -1458,6 +1466,11 @@ class MainWindow(QMainWindow):
         appid = self._current_selected_appid()
         details = self._details_by_appid.get(appid) if appid is not None else None
         metadata_key = _INLINE_EDIT_METADATA_KEYS.get(detail_key)
+        if detail_key == "release_date" and details is not None:
+            release_date_key = str(
+                details.get("_release_date_key") or "original_release_date"
+            )
+            metadata_key = f"appinfo.common.{release_date_key}"
         if editor is None or appid is None or details is None or metadata_key is None:
             return False
 
