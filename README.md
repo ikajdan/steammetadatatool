@@ -118,6 +118,8 @@ uv run --extra gui steammetadatatool-gui
 
 The main window shows a list of installed apps with their names and IDs. Clicking on an app displays its metadata in the right pane, including library assets. The _Edit Metadata_ button opens a dialog to modify metadata fields. The _Edit Assets_ button allows setting custom library artwork by selecting image files for each asset type.
 
+#### Library Assets
+
 Steam library assets are images that represent games in the Steam library. Each asset type has specific size requirements:
 
 | Asset   | Required size                   |
@@ -134,6 +136,14 @@ The full specification can be found at: <https://partner.steamgames.com/doc/stor
 > Steam Library asset changes might not refresh immediately in the Steam client.
 > If updated artwork does not appear right away, switch to another game and back,
 > or restart the Steam client.
+
+### Backup Strategy
+
+Before overwriting `appinfo.vdf`, SteamMetadataTool creates a timestamped backup next to the original.
+
+The GUI creates at most one backup per day to avoid clutter during repeated
+edits. The CLI creates a backup for each direct overwrite unless `--no-backup`
+is used.
 
 ## Editing
 
@@ -181,11 +191,7 @@ uv run steammetadatatool-cli \
   --metadata-file metadata.json
 ```
 
-### Backup Strategy
-
-When the CLI overwrites `appinfo.vdf`, it creates a timestamped `.bak` file next to the original, such as `appinfo.vdf_20260503T120000.000000Z.bak`.
-
-To overwrite `appinfo.vdf` without creating a backup, pass `--no-backup`:
+Write changes without creating a backup:
 
 ```bash
 uv run steammetadatatool-cli \

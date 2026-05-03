@@ -1567,6 +1567,7 @@ class MainWindow(QMainWindow):
             metadata_overrides={appid: values},
             write_out=None,
             create_backup=True,
+            backup_once_per_day=True,
         )
         details = self._refresh_app_from_disk(appid)
         raw_metadata = details.get("_raw_metadata")

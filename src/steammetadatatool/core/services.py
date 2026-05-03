@@ -209,6 +209,7 @@ def write_modified_appinfo(
     metadata_overrides: MetadataMap,
     write_out: Path | None,
     create_backup: bool = True,
+    backup_once_per_day: bool = False,
 ) -> Path:
     if write_out is not None:
         rewrite_appinfo(
@@ -241,7 +242,9 @@ def write_modified_appinfo(
             ),
         )
 
-        if create_backup:
+        if create_backup and (
+            not backup_once_per_day or not _has_backup_for_today(path)
+        ):
             backup_path = _timestamped_backup_path(path)
             path.replace(backup_path)
         tmp_path.replace(path)
@@ -660,3 +663,8 @@ def _timestamped_backup_path(path: Path) -> Path:
         raise RuntimeError("backup filename already exists: " + str(candidate))
 
     return candidate
+
+
+def _has_backup_for_today(path: Path) -> bool:
+    day_stamp = datetime.now(timezone.utc).strftime("%Y%m%d")
+    return any(path.parent.glob(f"{path.name}_{day_stamp}T*.bak"))
