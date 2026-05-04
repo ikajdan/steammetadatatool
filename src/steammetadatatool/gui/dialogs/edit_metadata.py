@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QSizePolicy,
     QStyle,
@@ -30,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from steammetadatatool.gui.data.app_data import app_data_path
 from steammetadatatool.gui.data.json_helpers import validate_json_file_version
+from steammetadatatool.gui.dialogs.message_box import show_critical
 from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
 from steammetadatatool.gui.widgets.empty_state import EmptyStateOverlay
 from steammetadatatool.gui.widgets.toast import ToastMessage
@@ -201,7 +201,7 @@ class EditMetadataDialog(QDialog):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Edit Metadata")
+        self.setWindowTitle("SteamMetadataTool")
         self.setModal(True)
         self.resize(1080, 560)
         self.setMinimumSize(720, 520)
@@ -588,10 +588,10 @@ class EditMetadataDialog(QDialog):
                 encoding="utf-8",
             )
         except (OSError, json.JSONDecodeError) as exc:
-            QMessageBox.critical(self, "Edit Metadata", str(exc))
+            show_critical(self, "Edit Metadata", str(exc))
             return
         except Exception as exc:
-            QMessageBox.critical(self, "Edit Metadata", str(exc))
+            show_critical(self, "Edit Metadata", str(exc))
             return
 
         if refreshed_metadata is not None:

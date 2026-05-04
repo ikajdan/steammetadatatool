@@ -38,7 +38,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLayout,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -49,10 +48,11 @@ from PySide6.QtWidgets import (
 )
 
 from steammetadatatool.gui.data.app_data import app_data_path
-from steammetadatatool.gui.services.theme import COLORS
-from steammetadatatool.gui.dialogs.edit_metadata import ElidedLabel
-from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
 from steammetadatatool.gui.data.json_helpers import validate_json_file_version
+from steammetadatatool.gui.dialogs.edit_metadata import ElidedLabel
+from steammetadatatool.gui.dialogs.message_box import show_critical, show_warning
+from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
+from steammetadatatool.gui.services.theme import COLORS
 from steammetadatatool.gui.steam.assets import (
     STEAM_GRID_BASENAME_SUFFIXES as _STEAM_GRID_BASENAME_SUFFIXES,
     STEAM_GRID_EXTENSIONS as _STEAM_GRID_EXTENSIONS,
@@ -788,7 +788,7 @@ class EditAssetsDialog(QDialog):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Edit Assets")
+        self.setWindowTitle("SteamMetadataTool")
         self.setModal(True)
         self.resize(1080, 760)
         self.setMinimumSize(720, 520)
@@ -1303,7 +1303,7 @@ class EditAssetsDialog(QDialog):
 
     def _add_asset_variant(self, asset_key: str) -> None:
         if self._appid is None:
-            QMessageBox.warning(self, "Edit Assets", "No app id is available.")
+            show_warning(self, "Edit Assets", "No app id is available.")
             return
 
         selected_path, _selected_filter = QFileDialog.getOpenFileName(
@@ -1324,7 +1324,7 @@ class EditAssetsDialog(QDialog):
         if asset_key == "icon_path":
             supported_suffixes.add(".ico")
         if source_path.suffix.lower() not in supported_suffixes:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Edit Assets",
                 f"Unsupported asset extension: {source_path.suffix}",
@@ -1335,7 +1335,7 @@ class EditAssetsDialog(QDialog):
             target_path = _custom_asset_target(self._appid, asset_key, source_path)
             _replace_with_file_copy(source_path, target_path)
         except OSError as exc:
-            QMessageBox.critical(self, "Edit Assets", str(exc))
+            show_critical(self, "Edit Assets", str(exc))
             return
 
         self._custom_assets_by_key.setdefault(asset_key, []).append(str(target_path))
@@ -1402,7 +1402,7 @@ class EditAssetsDialog(QDialog):
 
     def _apply_selected_assets(self) -> None:
         if self._appid is None:
-            QMessageBox.warning(self, "Edit Assets", "No app id is available.")
+            show_warning(self, "Edit Assets", "No app id is available.")
             return
 
         unapplied_asset_keys = self._unapplied_asset_keys()
@@ -1457,7 +1457,7 @@ class EditAssetsDialog(QDialog):
                 dict(self._selected_custom_paths_by_key),
             )
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            QMessageBox.critical(self, "Edit Assets", str(exc))
+            show_critical(self, "Edit Assets", str(exc))
             return
 
         self._initial_selected_custom_paths_by_key = dict(
@@ -1469,7 +1469,7 @@ class EditAssetsDialog(QDialog):
 
     def _open_asset_folder(self) -> None:
         if self._appid is None:
-            QMessageBox.warning(self, "Edit Assets", "No app id is available.")
+            show_warning(self, "Edit Assets", "No app id is available.")
             return
 
         app_assets_dir = _assets_dir() / self._appid
@@ -1478,12 +1478,12 @@ class EditAssetsDialog(QDialog):
             for dirname in sorted(set(_CUSTOM_ASSET_DIRS.values()) | {"preset"}):
                 (app_assets_dir / dirname).mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            QMessageBox.critical(self, "Edit Assets", str(exc))
+            show_critical(self, "Edit Assets", str(exc))
             return
 
         did_open = _open_local_directory(app_assets_dir)
         if not did_open:
-            QMessageBox.warning(
+            show_warning(
                 self,
                 "Edit Assets",
                 f"Could not open asset folder:\n{app_assets_dir}",

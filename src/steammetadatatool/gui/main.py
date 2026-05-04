@@ -32,7 +32,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -60,6 +59,11 @@ from steammetadatatool.core.services import (
 from steammetadatatool.gui.data.app_data import app_data_path
 from steammetadatatool.gui.dialogs.edit_assets import EditAssetsDialog
 from steammetadatatool.gui.dialogs.edit_metadata import EditMetadataDialog
+from steammetadatatool.gui.dialogs.message_box import (
+    confirm_warning,
+    show_critical,
+    show_information,
+)
 from steammetadatatool.gui.dialogs.missing_appinfo import (
     select_appinfo_file_after_detection_failed,
     select_missing_appinfo_file,
@@ -584,7 +588,7 @@ class MainWindow(QMainWindow):
     def _open_edit_metadata_dialog(self) -> None:
         appid = self._current_selected_appid()
         if appid is None:
-            QMessageBox.information(
+            show_information(
                 self,
                 "Edit Metadata",
                 "Select an app to view its metadata.",
@@ -594,7 +598,7 @@ class MainWindow(QMainWindow):
         details = self._details_by_appid.get(appid)
         raw_metadata = details.get("_raw_metadata") if details is not None else None
         if not isinstance(raw_metadata, dict):
-            QMessageBox.information(
+            show_information(
                 self,
                 "Edit Metadata",
                 "No metadata is available for the selected app.",
@@ -786,7 +790,7 @@ class MainWindow(QMainWindow):
             self._refresh_app_from_disk(appid)
             self._show_status_message("Metadata saved")
         except Exception as exc:
-            QMessageBox.critical(self, "Edit Details", str(exc))
+            show_critical(self, "Edit Details", str(exc))
             editor.setText(old_text)
             return False
 
@@ -858,28 +862,22 @@ class MainWindow(QMainWindow):
         if not is_steam_running():
             return True
 
-        message_box = QMessageBox(self)
-        message_box.setIcon(QMessageBox.Icon.Warning)
-        message_box.setText("Steam is currently running and may overwrite changes.")
-        message_box.setInformativeText(
-            "It is recommended to close Steam before making changes to appinfo.vdf.\n\n"
-            "Do you want to write changes anyway?"
+        return confirm_warning(
+            self,
+            "Edit Metadata",
+            "Steam is currently running and may overwrite changes.",
+            informative_text=(
+                "It is recommended to close Steam before making changes to "
+                "appinfo.vdf.\n\nDo you want to write changes anyway?"
+            ),
+            accept_text="Write Anyway",
+            reject_text="Cancel",
         )
-        cancel_button = message_box.addButton(
-            "Cancel", QMessageBox.ButtonRole.RejectRole
-        )
-        write_anyway_button = message_box.addButton(
-            "Write Anyway", QMessageBox.ButtonRole.AcceptRole
-        )
-        message_box.setDefaultButton(cancel_button)
-        message_box.exec()
-
-        return message_box.clickedButton() is write_anyway_button
 
     def _open_edit_assets_dialog(self, initial_asset_key: str | None = None) -> None:
         appid = self._current_selected_appid()
         if appid is None:
-            QMessageBox.information(
+            show_information(
                 self,
                 "Edit Assets",
                 "Select an app to view its assets.",
@@ -888,7 +886,7 @@ class MainWindow(QMainWindow):
 
         details = self._details_by_appid.get(appid)
         if details is None:
-            QMessageBox.information(
+            show_information(
                 self,
                 "Edit Assets",
                 "No asset information is available for the selected app.",
@@ -960,7 +958,7 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _show_load_error(self, message: str) -> None:
-        QMessageBox.critical(self, "SteamMetadataTool", message)
+        show_critical(self, "SteamMetadataTool", message)
 
     def _finish_async_load(self) -> None:
         has_loaded_appinfo = self._appinfo_path is not None
@@ -991,7 +989,7 @@ class MainWindow(QMainWindow):
         try:
             rows, details_by_appid, filter_matches_by_appid = read_app_rows(path_obj)
         except Exception as exc:
-            QMessageBox.critical(self, "SteamMetadataTool", str(exc))
+            show_critical(self, "SteamMetadataTool", str(exc))
             return
 
         self._apply_loaded_app_rows(

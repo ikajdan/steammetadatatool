@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 from PySide6.QtGui import QColor, QFont, QIcon, QPalette
-from PySide6.QtWidgets import QApplication, QStyleFactory
+from PySide6.QtWidgets import QApplication, QProxyStyle, QStyle, QStyleFactory
 
 COLORS = {
     "accent": "#66c0f4",
@@ -306,8 +306,15 @@ QFrame[frameShape="5"] {{
 """
 
 
+class NoShortcutUnderlineStyle(QProxyStyle):
+    def styleHint(self, hint, option=None, widget=None, returnData=None) -> int:
+        if hint == QStyle.StyleHint.SH_UnderlineShortcut:
+            return 0
+        return super().styleHint(hint, option, widget, returnData)
+
+
 def apply_theme(app: QApplication) -> None:
-    app.setStyle(QStyleFactory.create("Fusion"))
+    app.setStyle(NoShortcutUnderlineStyle(QStyleFactory.create("Fusion")))
     _configure_appimage_theme(app)
     app.setPalette(_build_palette())
     app.setStyleSheet(APP_STYLE)
