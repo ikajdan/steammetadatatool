@@ -83,6 +83,7 @@ from steammetadatatool.gui.models.app_details import (
 from steammetadatatool.gui.models.app_loader import AppLoadWorker
 from steammetadatatool.gui.services.asset_optimizer import run_asset_optimization_prompt
 from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
+from steammetadatatool.gui.services.metadata_apply import apply_metadata_file_silently
 from steammetadatatool.gui.services.search import normalized_search_text
 from steammetadatatool.gui.services.theme import apply_theme
 from steammetadatatool.gui.steam.process import is_steam_running
@@ -520,9 +521,7 @@ class MainWindow(QMainWindow):
         details_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        details_scroll.setVerticalScrollBarPolicy(
-            Qt.ScrollBarPolicy.ScrollBarAlwaysOn
-        )
+        details_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         details_scroll.setAlignment(
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
         )
@@ -1537,7 +1536,13 @@ def main() -> int:
         action="version",
         version=f"%(prog)s {__version__}",
     )
-    parser.add_argument(
+    action_group = parser.add_mutually_exclusive_group()
+    action_group.add_argument(
+        "--apply-metadata",
+        action="store_true",
+        help=("Apply all changes from the app data metadata.json and exit"),
+    )
+    action_group.add_argument(
         "--optimize-assets",
         action="store_true",
         help=("Resize custom asset files to the minimum required dimensions"),
@@ -1548,6 +1553,13 @@ def main() -> int:
         help="Path to appinfo.vdf (defaults to auto-detected Steam install)",
     )
     args = parser.parse_args()
+
+    if args.apply_metadata:
+        try:
+            apply_metadata_file_silently(args.path)
+        except ValueError as exc:
+            parser.error(str(exc))
+        return 0
 
     if args.optimize_assets:
         return run_asset_optimization_prompt()
