@@ -130,6 +130,7 @@ class MainWindow(QMainWindow):
         }
         self._search_text = ""
         self._setting_details = False
+        self._allow_appinfo_write_while_steam_running = False
         self._capsule_preview = RatioPreviewPixmapLabel(
             self._missing_asset_pixmap(32, 32),
             2,
@@ -859,10 +860,10 @@ class MainWindow(QMainWindow):
         return raw_metadata if isinstance(raw_metadata, dict) else True
 
     def _confirm_appinfo_write_when_steam_running(self) -> bool:
-        if not is_steam_running():
+        if self._allow_appinfo_write_while_steam_running or not is_steam_running():
             return True
 
-        return confirm_warning(
+        accepted = confirm_warning(
             self,
             "Edit Metadata",
             "Steam is currently running and may overwrite changes.",
@@ -873,6 +874,10 @@ class MainWindow(QMainWindow):
             accept_text="Write Anyway",
             reject_text="Cancel",
         )
+        if accepted:
+            self._allow_appinfo_write_while_steam_running = True
+
+        return accepted
 
     def _open_edit_assets_dialog(self, initial_asset_key: str | None = None) -> None:
         appid = self._current_selected_appid()
