@@ -31,7 +31,7 @@ class EmptyStateOverlay(QWidget):
         content.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         content_layout = QHBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 0, 0)
-        content_layout.setSpacing(14)
+        content_layout.setSpacing(4)
 
         icon_label = QLabel(self)
         icon_label.setAlignment(
@@ -40,7 +40,7 @@ class EmptyStateOverlay(QWidget):
         icon_label.setAutoFillBackground(False)
         icon_label.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         icon_label.setStyleSheet("background: transparent;")
-        icon_pixmap = icon.pixmap(40, 40)
+        icon_pixmap = icon.pixmap(32, 32)
         if not icon_pixmap.isNull():
             icon_label.setPixmap(icon_pixmap)
         content_layout.addWidget(icon_label, 0, Qt.AlignmentFlag.AlignTop)

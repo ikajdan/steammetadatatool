@@ -17,10 +17,10 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QPushButton,
     QSizePolicy,
+    QStackedLayout,
     QStyle,
     QStyledItemDelegate,
     QStyleOptionViewItem,
-    QStackedLayout,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -330,7 +330,7 @@ class EditMetadataDialog(QDialog):
         table_stack_layout.addWidget(metadata_table)
 
         empty_search_overlay = EmptyStateOverlay(
-            QIcon(monochrome_icon_pixmap(search_icon, 40, action_icon_color)),
+            QIcon(monochrome_icon_pixmap(search_icon, 48, action_icon_color)),
             "No Results Found",
             parent=table_stack,
         )

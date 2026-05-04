@@ -234,7 +234,7 @@ class MainWindow(QMainWindow):
             self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView),
         )
         empty_search_overlay = EmptyStateOverlay(
-            QIcon(monochrome_icon_pixmap(empty_search_icon, 40, search_icon_color)),
+            QIcon(monochrome_icon_pixmap(empty_search_icon, 48, search_icon_color)),
             "No Results Found",
             parent=table_stack,
         )
