@@ -112,6 +112,9 @@ class ElidedLabel(QLabel):
         self._full_text = text
         self._update_elided_text()
 
+    def natural_text_width(self) -> int:
+        return self.fontMetrics().horizontalAdvance(self._full_text) + 4
+
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._update_elided_text()
@@ -222,6 +225,7 @@ class EditMetadataDialog(QDialog):
         self._saved_entries = self._entries_with_saved_changes(dict(entries))
         self._search_text = ""
         self._apply_button: QPushButton | None = None
+        self._unapplied_count_label: QLabel | None = None
         self._empty_search_overlay: EmptyStateOverlay | None = None
         self._toast = ToastMessage(self, bottom_margin=80)
         action_icon_color = self.palette().placeholderText().color()
@@ -248,11 +252,30 @@ class EditMetadataDialog(QDialog):
 
         self._app_name_label = ElidedLabel(app_name or "", header_row)
         self._app_name_label.setStyleSheet("font-size: 18px; font-weight: 700;")
+        self._app_name_label.setMinimumWidth(0)
         self._app_name_label.setSizePolicy(
-            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Fixed,
         )
         header_row_layout.addWidget(self._app_name_label)
+
+        unapplied_count_label = QLabel(header_row)
+        self._unapplied_count_label = unapplied_count_label
+        unapplied_count_label.setStyleSheet(
+            "font-size: 13px;"
+            " font-weight: 600;"
+            " padding: 3px 8px;"
+            " border-radius: 10px;"
+            f" color: {self.palette().highlightedText().color().name()};"
+            f" background: {self.palette().highlight().color().name()};"
+        )
+        unapplied_count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        unapplied_count_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        unapplied_count_label.setVisible(False)
+        header_row_layout.addWidget(unapplied_count_label)
         header_row_layout.addStretch(1)
 
         self._search_input = QLineEdit(header_row)
@@ -664,16 +687,20 @@ class EditMetadataDialog(QDialog):
         self._metadata_table.viewport().update()
         self._refresh_apply_button_state()
 
-    def _has_unsaved_changes(self) -> bool:
+    def _unsaved_change_count(self) -> int:
         current_entries = self._current_entries()
-        return any(
+        return sum(
             current_entries.get(key, "") != saved_value
             for key, saved_value in self._saved_entries.items()
         )
 
     def _refresh_apply_button_state(self) -> None:
+        unapplied_count = self._unsaved_change_count()
         if self._apply_button is not None:
-            self._apply_button.setEnabled(self._has_unsaved_changes())
+            self._apply_button.setEnabled(unapplied_count > 0)
+        if self._unapplied_count_label is not None:
+            self._unapplied_count_label.setText(f"{unapplied_count} unapplied")
+            self._unapplied_count_label.setVisible(unapplied_count > 0)
 
     def _revert_entry(self, key: str) -> None:
         value_item = self._value_item_for_key(key)
@@ -783,7 +810,9 @@ class EditMetadataDialog(QDialog):
             QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Fixed,
         )
-        self._app_name_label.setFixedWidth(name_width)
+        self._app_name_label.setFixedWidth(
+            min(name_width, self._app_name_label.natural_text_width())
+        )
 
     def _select_first_visible_row(self) -> None:
         for row in range(self._metadata_table.rowCount()):

@@ -55,7 +55,11 @@ from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
 from steammetadatatool.gui.services.theme import COLORS
 from steammetadatatool.gui.steam.assets import (
     STEAM_GRID_BASENAME_SUFFIXES as _STEAM_GRID_BASENAME_SUFFIXES,
+)
+from steammetadatatool.gui.steam.assets import (
     STEAM_GRID_EXTENSIONS as _STEAM_GRID_EXTENSIONS,
+)
+from steammetadatatool.gui.steam.assets import (
     cached_icon_path_for_app,
     default_icon_path_for_app,
     original_icon_path_for_cached_icon,
@@ -805,6 +809,7 @@ class EditAssetsDialog(QDialog):
         self._asset_variant_counts: dict[str, int] = {}
         self._asset_scroll_animations: dict[str, QPropertyAnimation] = {}
         self._asset_unapplied_labels: dict[str, QLabel] = {}
+        self._unapplied_count_label: QLabel | None = None
         self._toast = ToastMessage(self, bottom_margin=80)
         self._initial_asset_key = initial_asset_key
         self._did_initial_asset_scroll = False
@@ -848,11 +853,31 @@ class EditAssetsDialog(QDialog):
 
         self._app_name_label = ElidedLabel(app_name or "", header_row)
         self._app_name_label.setStyleSheet("font-size: 18px; font-weight: 700;")
+        self._app_name_label.setMinimumWidth(0)
         self._app_name_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Preferred,
             QSizePolicy.Policy.Fixed,
         )
         header_row_layout.addWidget(self._app_name_label)
+
+        unapplied_count_label = QLabel(header_row)
+        self._unapplied_count_label = unapplied_count_label
+        unapplied_count_label.setStyleSheet(
+            "font-size: 13px;"
+            " font-weight: 600;"
+            " padding: 3px 8px;"
+            " border-radius: 10px;"
+            f" color: {self.palette().highlightedText().color().name()};"
+            f" background: {self.palette().highlight().color().name()};"
+        )
+        unapplied_count_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        unapplied_count_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        unapplied_count_label.setVisible(False)
+        header_row_layout.addWidget(unapplied_count_label)
+        header_row_layout.addStretch(1)
 
         folder_icon = QIcon.fromTheme(
             "folder-open",
@@ -977,14 +1002,26 @@ class EditAssetsDialog(QDialog):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
+        self._apply_header_layout()
         QTimer.singleShot(0, self._refresh_asset_variant_rows)
 
     def showEvent(self, event) -> None:
         super().showEvent(event)
+        self._apply_header_layout()
         QTimer.singleShot(0, self._refresh_asset_variant_rows)
         if self._initial_asset_key is not None and not self._did_initial_asset_scroll:
             self._initial_asset_scroll_attempts = 0
             self._queue_initial_asset_scroll()
+
+    def _apply_header_layout(self) -> None:
+        header_width = self._header_row_layout.parentWidget().width()
+        if header_width <= 0:
+            return
+
+        title_width = max(0, int(header_width / 2) - 16)
+        self._app_name_label.setFixedWidth(
+            min(title_width, self._app_name_label.natural_text_width())
+        )
 
     def _queue_initial_asset_scroll(self) -> None:
         delay_ms = 0 if self._initial_asset_scroll_attempts == 0 else 50
@@ -1052,7 +1089,7 @@ class EditAssetsDialog(QDialog):
         title_row = QWidget(card)
         title_row_layout = QHBoxLayout(title_row)
         title_row_layout.setContentsMargins(0, 0, 0, 0)
-        title_row_layout.setSpacing(8)
+        title_row_layout.setSpacing(12)
 
         title_label = QLabel(title, title_row)
         title_label.setStyleSheet("font-size: 16px; font-weight: 600;")
@@ -1060,12 +1097,17 @@ class EditAssetsDialog(QDialog):
 
         unapplied_label = QLabel("Unapplied", title_row)
         unapplied_label.setStyleSheet(
-            "font-size: 11px;"
+            "font-size: 12px;"
             " font-weight: 600;"
-            " padding: 2px 6px;"
-            " border-radius: 8px;"
+            " padding: 2px 7px;"
+            " border-radius: 9px;"
             f" color: {self.palette().highlightedText().color().name()};"
             f" background: {self.palette().highlight().color().name()};"
+        )
+        unapplied_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        unapplied_label.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
         )
         unapplied_label.setVisible(False)
         self._asset_unapplied_labels[key] = unapplied_label
@@ -1398,6 +1440,10 @@ class EditAssetsDialog(QDialog):
         unapplied_asset_keys = self._unapplied_asset_keys()
         for asset_key, label in self._asset_unapplied_labels.items():
             label.setVisible(asset_key in unapplied_asset_keys)
+        unapplied_count = len(unapplied_asset_keys)
+        if self._unapplied_count_label is not None:
+            self._unapplied_count_label.setText(f"{unapplied_count} unapplied")
+            self._unapplied_count_label.setVisible(unapplied_count > 0)
         self._apply_button.setEnabled(bool(unapplied_asset_keys))
 
     def _apply_selected_assets(self) -> None:
