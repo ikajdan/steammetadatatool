@@ -209,7 +209,6 @@ class EditMetadataDialog(QDialog):
         self.resize(1080, 560)
         self.setMinimumSize(720, 520)
         self._column_width_ratio = (4, 3)
-        self._header_width_ratio = (2, 1)
 
         entries = _flatten_metadata_entries(raw_metadata)
         readonly_keys = {
@@ -289,6 +288,7 @@ class EditMetadataDialog(QDialog):
             QLineEdit.ActionPosition.LeadingPosition,
         )
         self._search_input.setClearButtonEnabled(True)
+        self._search_input.setMinimumHeight(40)
         self._search_input.textChanged.connect(self._apply_table_filter)
         header_row_layout.addWidget(self._search_input, 0, Qt.AlignmentFlag.AlignRight)
         dialog_layout.addWidget(header_row)
@@ -800,9 +800,7 @@ class EditMetadataDialog(QDialog):
             return
 
         content_width = max(0, header_width)
-        search_width = int(
-            content_width * self._header_width_ratio[1] / sum(self._header_width_ratio)
-        )
+        search_width = int(content_width * 0.3)
         name_width = max(0, int(self.width() / 2) - 16)
         self._header_row_layout.setContentsMargins(0, 0, 0, 0)
         self._search_input.setFixedWidth(search_width)
