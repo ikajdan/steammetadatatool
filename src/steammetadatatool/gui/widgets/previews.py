@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PySide6.QtCore import QPoint, QRectF, Qt, QVariantAnimation
+from PySide6.QtCore import QPoint, QRect, QRectF, Qt, QVariantAnimation
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap
 from PySide6.QtWidgets import (
     QFrame,
@@ -85,7 +85,11 @@ class PreviewPixmapLabel(QLabel):
     def _refresh_cursor(self) -> None:
         self.setCursor(
             Qt.CursorShape.PointingHandCursor
-            if self._click_handler is not None and self._click_enabled
+            if (
+                self._click_handler is not None
+                and self._click_enabled
+                and self._hovered
+            )
             else Qt.CursorShape.ArrowCursor
         )
 
@@ -109,14 +113,24 @@ class PreviewPixmapLabel(QLabel):
         self._refresh_pixmap()
 
     def enterEvent(self, event) -> None:
-        self._hovered = True
-        self._animate_overlay(visible=True)
+        self._set_hovered(self._event_is_interactive(event))
         super().enterEvent(event)
 
+    def mouseMoveEvent(self, event) -> None:
+        self._set_hovered(self._event_is_interactive(event))
+        super().mouseMoveEvent(event)
+
     def leaveEvent(self, event) -> None:
-        self._hovered = False
-        self._animate_overlay(visible=False)
+        self._set_hovered(False)
         super().leaveEvent(event)
+
+    def _set_hovered(self, hovered: bool) -> None:
+        if self._hovered == hovered:
+            return
+
+        self._hovered = hovered
+        self._animate_overlay(visible=hovered)
+        self._refresh_cursor()
 
     def _animate_overlay(self, *, visible: bool) -> None:
         if not self._show_click_overlay or not self._click_enabled:
@@ -135,7 +149,7 @@ class PreviewPixmapLabel(QLabel):
             self._click_handler is not None
             and self._click_enabled
             and event.button() == Qt.MouseButton.LeftButton
-            and self.rect().contains(event.position().toPoint())
+            and self._event_is_interactive(event)
         ):
             self._click_handler()
             event.accept()
@@ -157,8 +171,7 @@ class PreviewPixmapLabel(QLabel):
         if pixmap is None or pixmap.isNull():
             return
 
-        pixmap_rect = pixmap.rect()
-        pixmap_rect.moveTo(self._pixmap_top_left(pixmap))
+        pixmap_rect = self._pixmap_rect(pixmap)
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -191,8 +204,7 @@ class PreviewPixmapLabel(QLabel):
         if pixmap is None or pixmap.isNull():
             return
 
-        pixmap_rect = QRectF(pixmap.rect())
-        pixmap_rect.moveTo(self._pixmap_top_left(pixmap))
+        pixmap_rect = QRectF(self._pixmap_rect(pixmap))
 
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -227,6 +239,27 @@ class PreviewPixmapLabel(QLabel):
             y = (self.height() - pixmap.height()) // 2
 
         return QPoint(x, y)
+
+    def _pixmap_rect(self, pixmap: QPixmap) -> QRect:
+        pixmap_rect = pixmap.rect()
+        pixmap_rect.moveTo(self._pixmap_top_left(pixmap))
+        return pixmap_rect
+
+    def _event_is_interactive(self, event) -> bool:
+        if not hasattr(event, "position"):
+            return False
+
+        return self._point_is_interactive(event.position().toPoint())
+
+    def _point_is_interactive(self, point: QPoint) -> bool:
+        if self._click_handler is None or not self._click_enabled:
+            return False
+
+        pixmap = self.pixmap()
+        if pixmap is None or pixmap.isNull():
+            return False
+
+        return self._pixmap_rect(pixmap).contains(point)
 
     def _refresh_pixmap(self) -> None:
         pixmap = self._source_pixmap or self._placeholder_pixmap
