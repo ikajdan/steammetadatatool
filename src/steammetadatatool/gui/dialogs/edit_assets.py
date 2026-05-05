@@ -387,6 +387,10 @@ def _write_selected_assets_manifest(
     )
 
 
+def _default_hero_preset_path(appid: str) -> Path:
+    return _assets_dir() / appid / "preset" / "0.json"
+
+
 class PreviewPixmapLabel(QLabel):
     def __init__(
         self,
@@ -1487,8 +1491,11 @@ class EditAssetsDialog(QDialog):
                             grid_dir / f"{self._appid}.json",
                         )
                 elif "hero_path" in self._default_selected_asset_keys:
+                    default_preset_path = _default_hero_preset_path(self._appid)
                     preset_target = grid_dir / f"{self._appid}.json"
-                    if preset_target.exists() or preset_target.is_symlink():
+                    if default_preset_path.is_file():
+                        _replace_with_file_copy(default_preset_path, preset_target)
+                    elif preset_target.exists() or preset_target.is_symlink():
                         preset_target.unlink()
 
             if "icon_path" in unapplied_asset_keys:
