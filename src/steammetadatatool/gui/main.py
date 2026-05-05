@@ -39,7 +39,6 @@ from PySide6.QtWidgets import (
     QStyle,
     QTableWidget,
     QTableWidgetItem,
-    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -123,6 +122,7 @@ class MainWindow(QMainWindow):
         self._list_loading_overlay: ListLoadingOverlay | None = None
         self._empty_search_overlay: EmptyStateOverlay | None = None
         self._toast: ToastMessage | None = None
+        self._search_drawer: QWidget | None = None
         self._pixmap_cache: dict[str, QPixmap] = {}
         self._composited_hero_cache: dict[tuple[str, str, str], QPixmap] = {}
         self._asset_image_specs: dict[str, tuple[int, int]] = {
@@ -170,23 +170,26 @@ class MainWindow(QMainWindow):
             QLineEdit.ActionPosition.LeadingPosition,
         )
         self._search_input.setClearButtonEnabled(True)
+        self._search_input.setMinimumHeight(40)
         self._search_input.textChanged.connect(self._apply_table_filter)
 
         filter_icon = QIcon.fromTheme(
             "view-filter",
             self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView),
         )
-        self._filter_button = QToolButton()
-        button_size = self._search_input.sizeHint().height()
         filter_icon_color = self.palette().placeholderText().color()
-        self._filter_button.setIcon(
-            QIcon(monochrome_icon_pixmap(filter_icon, 18, filter_icon_color))
+        filter_button_icon = QIcon(
+            monochrome_icon_pixmap(filter_icon, 24, filter_icon_color, right_padding=0)
         )
+        self._filter_button = QPushButton(filter_button_icon, "Games Only")
+        self._filter_button.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
+            QSizePolicy.Policy.Fixed,
+        )
+        self._filter_button.setMinimumHeight(40)
+        self._filter_button.setIconSize(QSize(24, 24))
         self._filter_button.setToolTip("Show only games with metadata")
-        self._filter_button.setAutoRaise(True)
         self._filter_button.setCheckable(True)
-        self._filter_button.setFixedSize(button_size, button_size)
-        self._filter_button.setIconSize(self._filter_button.size() * 0.55)
         self._filter_button.toggled.connect(
             lambda _checked: self._apply_table_filter(self._search_input.text())
         )
@@ -217,14 +220,16 @@ class MainWindow(QMainWindow):
         list_widget = QWidget()
         list_layout = QVBoxLayout(list_widget)
         list_layout.setContentsMargins(0, 0, 0, 0)
-        list_layout.setSpacing(8)
+        list_layout.setSpacing(0)
 
         search_row = QWidget()
         search_row_layout = QHBoxLayout(search_row)
-        search_row_layout.setContentsMargins(0, 0, 0, 0)
-        search_row_layout.setSpacing(8)
+        search_row_layout.setContentsMargins(0, 14, 0, 8)
+        search_row_layout.setSpacing(12)
         search_row_layout.addWidget(self._search_input, 1)
         search_row_layout.addWidget(self._filter_button, 0)
+        search_row.hide()
+        self._search_drawer = search_row
 
         table_stack = QWidget()
         table_stack_layout = QStackedLayout(table_stack)
@@ -250,7 +255,8 @@ class MainWindow(QMainWindow):
         self._list_loading_overlay = list_loading_overlay
         table_stack_layout.addWidget(list_loading_overlay)
 
-        list_layout.addWidget(table_stack)
+        list_layout.addWidget(table_stack, 1)
+        list_layout.addWidget(search_row, 0)
 
         details_widget = QWidget()
         details_widget.setMinimumWidth(500)
@@ -507,9 +513,8 @@ class MainWindow(QMainWindow):
 
         root = QWidget()
         root_layout = QVBoxLayout(root)
-        root_layout.setContentsMargins(10, 11, 10, 10)
+        root_layout.setContentsMargins(10, 12, 10, 10)
         root_layout.setSpacing(11)
-        root_layout.addWidget(search_row, 0)
 
         content_layout = QHBoxLayout()
         content_layout.setContentsMargins(0, 0, 0, 0)
@@ -536,7 +541,7 @@ class MainWindow(QMainWindow):
 
         actions_container = QWidget()
         actions_layout = QHBoxLayout(actions_container)
-        actions_layout.setContentsMargins(8, 0, 8, 8)
+        actions_layout.setContentsMargins(8, 6, 8, 8)
         actions_layout.setSpacing(12)
 
         metadata_icon = QIcon.fromTheme(
@@ -1193,18 +1198,22 @@ class MainWindow(QMainWindow):
         )
 
         if key == Qt.Key.Key_F and control_pressed:
-            self._focus_search()
+            self._toggle_search_drawer()
             return True
 
         if key == Qt.Key.Key_Slash and not meaningful_modifiers:
             if isinstance(watched, QLineEdit):
                 return False
-            self._focus_search()
+            self._toggle_search_drawer()
             return True
 
         if key == Qt.Key.Key_Escape and self._search_input.text():
             self._search_input.clear()
             self._search_input.setFocus(Qt.FocusReason.ShortcutFocusReason)
+            return True
+        if key == Qt.Key.Key_Escape and self._is_search_drawer_visible():
+            self._set_search_drawer_visible(False)
+            self._table.setFocus(Qt.FocusReason.ShortcutFocusReason)
             return True
 
         if key not in {Qt.Key.Key_Return, Qt.Key.Key_Enter}:
@@ -1225,8 +1234,30 @@ class MainWindow(QMainWindow):
         if not self._search_input.isEnabled():
             return
 
+        self._set_search_drawer_visible(True)
         self._search_input.setFocus(Qt.FocusReason.ShortcutFocusReason)
         self._search_input.selectAll()
+
+    def _toggle_search_drawer(self) -> None:
+        if not self._search_input.isEnabled():
+            return
+
+        is_visible = self._is_search_drawer_visible()
+        self._set_search_drawer_visible(not is_visible)
+        if not is_visible:
+            self._search_input.setFocus(Qt.FocusReason.ShortcutFocusReason)
+            self._search_input.selectAll()
+        else:
+            self._table.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def _is_search_drawer_visible(self) -> bool:
+        return self._search_drawer is not None and self._search_drawer.isVisible()
+
+    def _set_search_drawer_visible(self, visible: bool) -> None:
+        if self._search_drawer is None:
+            return
+
+        self._search_drawer.setVisible(visible)
 
     def _sync_capsule_preview_size(self) -> None:
         if self._details_form_container is None:
