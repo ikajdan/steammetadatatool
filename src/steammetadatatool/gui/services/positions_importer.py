@@ -80,7 +80,7 @@ def _string_value(value: Any) -> str | None:
 
 def _preset_name_for_hero(hero_name: str | None) -> str:
     if hero_name is None:
-        return "0.json"
+        return "default.json"
 
     stem = Path(hero_name).stem.strip()
-    return f"{stem or '0'}.json"
+    return f"{stem or 'default'}.json"

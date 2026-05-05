@@ -388,7 +388,7 @@ def _write_selected_assets_manifest(
 
 
 def _default_hero_preset_path(appid: str) -> Path:
-    return _assets_dir() / appid / "preset" / "0.json"
+    return _assets_dir() / appid / "preset" / "default.json"
 
 
 class PreviewPixmapLabel(QLabel):
