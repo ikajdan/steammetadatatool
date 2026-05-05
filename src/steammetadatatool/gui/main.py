@@ -84,6 +84,7 @@ from steammetadatatool.gui.models.app_loader import AppLoadWorker
 from steammetadatatool.gui.services.asset_optimizer import run_asset_optimization_prompt
 from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
 from steammetadatatool.gui.services.metadata_apply import apply_metadata_file_silently
+from steammetadatatool.gui.services.positions_importer import import_logo_position_files
 from steammetadatatool.gui.services.search import normalized_search_text
 from steammetadatatool.gui.services.theme import apply_theme
 from steammetadatatool.gui.steam.process import is_steam_running
@@ -1547,6 +1548,12 @@ def main() -> int:
         action="store_true",
         help=("Resize custom asset files to the minimum required dimensions"),
     )
+    action_group.add_argument(
+        "--import-positions",
+        dest="import_positions",
+        action="store_true",
+        help="Import logo position files into the local app data assets folder",
+    )
     parser.add_argument(
         "path",
         nargs="?",
@@ -1563,6 +1570,13 @@ def main() -> int:
 
     if args.optimize_assets:
         return run_asset_optimization_prompt()
+
+    if args.import_positions:
+        try:
+            import_logo_position_files()
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
+        return 0
 
     initial_path = args.path
     if not initial_path:
