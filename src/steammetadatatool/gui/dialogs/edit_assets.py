@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
 
 from steammetadatatool.gui.data.app_data import app_data_path
 from steammetadatatool.gui.data.json_helpers import validate_json_file_version
+from steammetadatatool.gui.dialogs.button_order import primary_action_first
 from steammetadatatool.gui.dialogs.edit_metadata import ElidedLabel
 from steammetadatatool.gui.dialogs.message_box import show_critical, show_warning
 from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
@@ -970,33 +971,37 @@ class EditAssetsDialog(QDialog):
             dialog_actions,
         )
         self._apply_button.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Fixed,
         )
-        self._apply_button.setMinimumHeight(40)
-        self._apply_button.setMaximumWidth(360)
+        self._apply_button.setFixedSize(QSize(160, 40))
         self._apply_button.setIconSize(QSize(24, 24))
         self._apply_button.clicked.connect(self._apply_selected_assets)
-        dialog_actions_layout.addWidget(self._apply_button)
 
-        close_icon = QIcon.fromTheme(
-            "dialog-close",
-            self.style().standardIcon(QStyle.StandardPixmap.SP_DialogCloseButton),
+        cancel_icon = QIcon.fromTheme(
+            "dialog-cancel",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton),
         )
-        close_button = QPushButton(
-            QIcon(monochrome_icon_pixmap(close_icon, 24, action_icon_color)),
-            "Close",
+        cancel_button = QPushButton(
+            QIcon(monochrome_icon_pixmap(cancel_icon, 24, action_icon_color)),
+            "Cancel",
             dialog_actions,
         )
-        close_button.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
+        cancel_button.setSizePolicy(
+            QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Fixed,
         )
-        close_button.setMinimumHeight(40)
-        close_button.setMaximumWidth(360)
-        close_button.setIconSize(QSize(24, 24))
-        close_button.clicked.connect(self.accept)
-        dialog_actions_layout.addWidget(close_button)
+        cancel_button.setFixedSize(QSize(160, 40))
+        cancel_button.setIconSize(QSize(24, 24))
+        cancel_button.clicked.connect(self.reject)
+
+        action_buttons = (
+            (self._apply_button, cancel_button)
+            if primary_action_first()
+            else (cancel_button, self._apply_button)
+        )
+        for button in action_buttons:
+            dialog_actions_layout.addWidget(button)
 
         dialog_actions_layout.setStretch(0, 3)
         dialog_actions_layout.setStretch(1, 1)

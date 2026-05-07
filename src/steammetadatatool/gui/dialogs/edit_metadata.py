@@ -7,7 +7,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from PySide6.QtCore import QEvent, QRect, QSize, Qt
+from PySide6.QtCore import QEvent, QRect, QSize, Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QDialog,
@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from steammetadatatool.gui.data.app_data import app_data_path
 from steammetadatatool.gui.data.json_helpers import validate_json_file_version
+from steammetadatatool.gui.dialogs.button_order import primary_action_first
 from steammetadatatool.gui.dialogs.message_box import show_critical
 from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
 from steammetadatatool.gui.widgets.empty_state import EmptyStateOverlay
@@ -135,12 +136,22 @@ class RevertMetadataValueDelegate(QStyledItemDelegate):
         revert_icon: QIcon,
         should_show_revert: Callable[[str, str], bool],
         revert_entry: Callable[[str], None],
+        focus_apply_button: Callable[[], None],
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._revert_icon = revert_icon
         self._should_show_revert = should_show_revert
         self._revert_entry = revert_entry
+        self._focus_apply_button = focus_apply_button
+
+    def createEditor(self, parent, option, index):
+        editor = super().createEditor(parent, option, index)
+        if isinstance(editor, QLineEdit):
+            editor.returnPressed.connect(
+                lambda: QTimer.singleShot(0, self._focus_apply_button)
+            )
+        return editor
 
     def paint(self, painter, option, index) -> None:
         key = self._key_for_index(index)
@@ -324,6 +335,7 @@ class EditMetadataDialog(QDialog):
                 self._revert_icon,
                 self._should_show_revert_for_key,
                 self._revert_entry,
+                self._focus_apply_button,
                 metadata_table,
             ),
         )
@@ -382,15 +394,13 @@ class EditMetadataDialog(QDialog):
         )
         self._apply_button = apply_button
         apply_button.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Fixed,
         )
-        apply_button.setMinimumHeight(40)
-        apply_button.setMaximumWidth(360)
+        apply_button.setFixedSize(QSize(160, 40))
         apply_button.setIconSize(QSize(24, 24))
         apply_button.setEnabled(False)
         apply_button.clicked.connect(self._save_changes)
-        dialog_actions_layout.addWidget(apply_button)
 
         cancel_icon = QIcon.fromTheme(
             "dialog-cancel",
@@ -398,24 +408,33 @@ class EditMetadataDialog(QDialog):
         )
         cancel_button = QPushButton(
             QIcon(monochrome_icon_pixmap(cancel_icon, 24, action_icon_color)),
-            "Close",
+            "Cancel",
             dialog_actions,
         )
         cancel_button.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Fixed,
         )
-        cancel_button.setMinimumHeight(40)
-        cancel_button.setMaximumWidth(360)
+        cancel_button.setFixedSize(QSize(160, 40))
         cancel_button.setIconSize(QSize(24, 24))
         cancel_button.clicked.connect(self.reject)
-        dialog_actions_layout.addWidget(cancel_button)
+
+        action_buttons = (
+            (apply_button, cancel_button)
+            if primary_action_first()
+            else (cancel_button, apply_button)
+        )
+        for button in action_buttons:
+            dialog_actions_layout.addWidget(button)
 
         dialog_actions_layout.setStretch(0, 4)
         dialog_actions_layout.setStretch(1, 1)
         dialog_actions_layout.setStretch(2, 1)
         dialog_layout.addWidget(dialog_actions)
         self._refresh_apply_button_state()
+
+    def _focus_apply_button(self) -> None:
+        self._apply_button.setFocus(Qt.FocusReason.ShortcutFocusReason)
 
     def _entries_with_saved_changes(self, entries: dict[str, str]) -> dict[str, str]:
         if self._appid is None:
