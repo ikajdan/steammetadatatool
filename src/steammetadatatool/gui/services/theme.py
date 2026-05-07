@@ -76,6 +76,61 @@ QToolTip {{
     padding: 4px;
 }}
 
+QMenu {{
+    background-color: {COLORS["background_alt"]};
+    border: 1px solid {COLORS["border_light"]};
+    border-radius: 6px;
+    color: {COLORS["text"]};
+    padding: 5px;
+}}
+
+QMenu::item {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: {COLORS["text"]};
+    margin: 1px;
+    padding: 7px 16px 7px 12px;
+}}
+
+QMenu::item:selected {{
+    background-color: {COLORS["border"]};
+    border-color: {COLORS["accent"]};
+    color: {COLORS["text_inverse"]};
+}}
+
+QMenu::item:pressed {{
+    background-color: {COLORS["button_pressed"]};
+    border-color: {COLORS["highlight"]};
+    color: {COLORS["text_inverse"]};
+}}
+
+QMenu::item:disabled {{
+    color: {COLORS["text_disabled"]};
+}}
+
+QMenu QToolButton#contextMenuActionButton {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: {COLORS["text"]};
+    margin: 1px;
+    padding: 7px 16px 7px 12px;
+    text-align: left;
+}}
+
+QMenu QToolButton#contextMenuActionButton:hover {{
+    background-color: {COLORS["border"]};
+    border-color: {COLORS["accent"]};
+    color: {COLORS["text_inverse"]};
+}}
+
+QMenu QToolButton#contextMenuActionButton:pressed {{
+    background-color: {COLORS["button_pressed"]};
+    border-color: {COLORS["highlight"]};
+    color: {COLORS["text_inverse"]};
+}}
+
 QPushButton {{
     background-color: {COLORS["button"]};
     border: 1px solid {COLORS["border_light"]};

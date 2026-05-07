@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import (
     QEvent,
     QObject,
+    QPoint,
     QSize,
     Qt,
     QThread,
@@ -32,6 +34,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMainWindow,
+    QMenu,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -39,8 +42,10 @@ from PySide6.QtWidgets import (
     QStyle,
     QTableWidget,
     QTableWidgetItem,
+    QToolButton,
     QVBoxLayout,
     QWidget,
+    QWidgetAction,
 )
 
 from steammetadatatool import __version__
@@ -216,6 +221,8 @@ class MainWindow(QMainWindow):
         self._table.itemDoubleClicked.connect(
             lambda _item: self._open_edit_metadata_dialog()
         )
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._show_table_context_menu)
 
         list_widget = QWidget()
         list_layout = QVBoxLayout(list_widget)
@@ -628,6 +635,72 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         dialog.exec()
+
+    def _show_table_context_menu(self, position: QPoint) -> None:
+        row = self._table.rowAt(position.y())
+        if row < 0:
+            return
+
+        if self._appinfo_path is None or self._load_thread is not None:
+            return
+
+        self._table.selectRow(row)
+
+        metadata_icon = QIcon.fromTheme(
+            "document-edit",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon),
+        )
+        assets_icon = QIcon.fromTheme(
+            "view-preview",
+            self.style().standardIcon(QStyle.StandardPixmap.SP_DirIcon),
+        )
+
+        menu = QMenu(self)
+        menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._add_table_context_menu_action(
+            menu,
+            "Edit Metadata",
+            metadata_icon,
+            lambda: self._open_edit_metadata_dialog(),
+        )
+        self._add_table_context_menu_action(
+            menu,
+            "Edit Assets",
+            assets_icon,
+            lambda: self._open_edit_assets_dialog(),
+        )
+        menu.exec(self._table.viewport().mapToGlobal(position))
+
+    def _add_table_context_menu_action(
+        self,
+        menu: QMenu,
+        text: str,
+        icon: QIcon,
+        handler: Callable[[], None],
+    ) -> None:
+        button = QToolButton(menu)
+        button.setObjectName("contextMenuActionButton")
+        button.setText(text)
+        button.setIcon(
+            QIcon(
+                monochrome_icon_pixmap(
+                    icon,
+                    18,
+                    self.palette().buttonText().color(),
+                    right_padding=6,
+                )
+            )
+        )
+        button.setIconSize(QSize(24, 18))
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setMinimumWidth(180)
+        button.clicked.connect(menu.close)
+        button.clicked.connect(handler)
+
+        action = QWidgetAction(menu)
+        action.setDefaultWidget(button)
+        menu.addAction(action)
 
     def _metadata_payload_apps(self, path: Path) -> list[dict[str, Any]]:
         if not path.exists():
