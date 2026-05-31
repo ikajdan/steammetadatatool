@@ -7,6 +7,8 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPainter, QPen
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
+from steammetadatatool.i18n import _
+
 
 class LoadingSpinner(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -67,7 +69,7 @@ class ListLoadingOverlay(QWidget):
         self._spinner = LoadingSpinner(self)
         layout.addWidget(self._spinner, 0, Qt.AlignmentFlag.AlignCenter)
 
-        text = QLabel("Loading apps...", self)
+        text = QLabel(_("Loading apps…"), self)
         text.setAutoFillBackground(False)
         text.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         text.setStyleSheet("color: palette(midlight);")

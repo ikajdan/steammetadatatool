@@ -10,6 +10,7 @@ from steammetadatatool import __version__
 from steammetadatatool.core.models import CliRequest, OverrideInput
 from steammetadatatool.core.services import parse_aliases, parse_set_arg
 from steammetadatatool.core.use_cases import execute_cli_request
+from steammetadatatool.i18n import _, configure_gettext
 
 
 def _aliases_arg(raw: str) -> list[str]:
@@ -29,7 +30,7 @@ def _set_arg(raw: str):
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="steam_appinfo_parser",
-        description="A tool for reading and editing Steam client metadata.",
+        description=_("A tool for reading and editing Steam client metadata."),
     )
     parser.add_argument(
         "--version",
@@ -39,68 +40,75 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "path",
         nargs="?",
-        help="Path to appinfo.vdf (defaults to auto-detected Steam install)",
+        help=_("Path to appinfo.vdf (defaults to auto-detected Steam install)"),
     )
-    parser.add_argument("--appid", type=int, action="append", help="Filter by appid")
+    parser.add_argument("--appid", type=int, action="append", help=_("Filter by appid"))
 
-    parser.add_argument("--name", help="Override common.name")
-    parser.add_argument("--sort-as", dest="sort_as", help="Override the sort-as name")
+    parser.add_argument("--name", help=_("Override common.name"))
+    parser.add_argument(
+        "--sort-as", dest="sort_as", help=_("Override the sort-as name")
+    )
     parser.add_argument(
         "--aliases",
         type=_aliases_arg,
-        help="Override aliases (comma-separated or JSON array)",
+        help=_("Override aliases (comma-separated or JSON array)"),
     )
     parser.add_argument(
         "--original-release-date",
         dest="original_release_date",
-        help="Override the original release date (YYYY-MM-DD)",
+        help=_("Override the original release date (YYYY-MM-DD)"),
     )
     parser.add_argument(
         "--steam-release-date",
         dest="steam_release_date",
-        help="Override the release date (YYYY-MM-DD)",
+        help=_("Override the release date (YYYY-MM-DD)"),
     )
     parser.add_argument(
         "--set",
         dest="set_values",
         action="append",
         type=_set_arg,
-        help="Generic PATH=VALUE override (dot-separated PATH, VALUE can be JSON or a plain string)",
+        help=_(
+            "Generic PATH=VALUE override (dot-separated PATH, VALUE can be JSON or a plain string)"
+        ),
     )
     parser.add_argument(
         "--metadata-file",
         dest="metadata_file",
         type=Path,
-        help="Path to the JSON file containing metadata overrides",
+        help=_("Path to the JSON file containing metadata overrides"),
     )
     parser.add_argument(
         "--write-out",
         dest="write_out",
         type=Path,
-        help="Write a modified appinfo.vdf to this path instead of overwriting the input",
+        help=_(
+            "Write a modified appinfo.vdf to this path instead of overwriting the input"
+        ),
     )
     parser.add_argument(
         "--no-backup",
         dest="no_backup",
         action="store_true",
-        help="Overwrite appinfo.vdf without creating a timestamped backup",
+        help=_("Overwrite appinfo.vdf without creating a timestamped backup"),
     )
     parser.add_argument(
         "--dry-run",
         dest="dry_run",
         action="store_true",
-        help="Print modified records without writing any files",
+        help=_("Print modified records without writing any files"),
     )
     parser.add_argument(
         "--json",
         dest="as_json",
         action="store_true",
-        help="Print the output as JSON instead of plain text",
+        help=_("Print the output as JSON instead of plain text"),
     )
     return parser
 
 
 def main() -> int:
+    configure_gettext()
     parser = _build_parser()
     args = parser.parse_args()
 

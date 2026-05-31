@@ -34,6 +34,7 @@ from steammetadatatool.gui.dialogs.message_box import show_critical
 from steammetadatatool.gui.services.icons import monochrome_icon_pixmap
 from steammetadatatool.gui.widgets.empty_state import EmptyStateOverlay
 from steammetadatatool.gui.widgets.toast import ToastMessage
+from steammetadatatool.i18n import _
 
 _METADATA_FILE_VERSION = 1
 
@@ -289,7 +290,7 @@ class EditMetadataDialog(QDialog):
         header_row_layout.addStretch(1)
 
         self._search_input = QLineEdit(header_row)
-        self._search_input.setPlaceholderText("Search by Key or Value")
+        self._search_input.setPlaceholderText(_("Search by Key or Value"))
         search_icon = QIcon.fromTheme(
             "edit-find",
             self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView),
@@ -310,7 +311,7 @@ class EditMetadataDialog(QDialog):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
-        metadata_table.setHorizontalHeaderLabels(["Key", "Value"])
+        metadata_table.setHorizontalHeaderLabels([_("Key"), _("Value")])
         metadata_table.verticalHeader().setVisible(False)
         metadata_table.setEditTriggers(
             QTableWidget.EditTrigger.DoubleClicked
@@ -366,7 +367,7 @@ class EditMetadataDialog(QDialog):
 
         empty_search_overlay = EmptyStateOverlay(
             QIcon(monochrome_icon_pixmap(search_icon, 48, action_icon_color)),
-            "No Results Found",
+            _("No Results Found"),
             parent=table_stack,
         )
         empty_search_overlay.hide()
@@ -389,7 +390,7 @@ class EditMetadataDialog(QDialog):
         )
         apply_button = QPushButton(
             QIcon(monochrome_icon_pixmap(apply_icon, 24, action_icon_color)),
-            "Apply",
+            _("Apply"),
             dialog_actions,
         )
         self._apply_button = apply_button
@@ -408,7 +409,7 @@ class EditMetadataDialog(QDialog):
         )
         cancel_button = QPushButton(
             QIcon(monochrome_icon_pixmap(cancel_icon, 24, action_icon_color)),
-            "Cancel",
+            _("Close"),
             dialog_actions,
         )
         cancel_button.setSizePolicy(
@@ -630,10 +631,10 @@ class EditMetadataDialog(QDialog):
                 encoding="utf-8",
             )
         except (OSError, json.JSONDecodeError) as exc:
-            show_critical(self, "Edit Metadata", str(exc))
+            show_critical(self, _("Edit Metadata"), str(exc))
             return
         except Exception as exc:
-            show_critical(self, "Edit Metadata", str(exc))
+            show_critical(self, _("Edit Metadata"), str(exc))
             return
 
         if refreshed_metadata is not None:
@@ -718,7 +719,9 @@ class EditMetadataDialog(QDialog):
         if self._apply_button is not None:
             self._apply_button.setEnabled(unapplied_count > 0)
         if self._unapplied_count_label is not None:
-            self._unapplied_count_label.setText(f"{unapplied_count} unapplied")
+            self._unapplied_count_label.setText(
+                _("{count} unapplied").format(count=unapplied_count)
+            )
             self._unapplied_count_label.setVisible(unapplied_count > 0)
 
     def _revert_entry(self, key: str) -> None:

@@ -101,6 +101,7 @@ from steammetadatatool.gui.widgets.previews import (
     RatioPreviewPixmapLabel,
 )
 from steammetadatatool.gui.widgets.toast import ToastMessage
+from steammetadatatool.i18n import _, configure_gettext
 
 
 class MainWindow(QMainWindow):
@@ -164,7 +165,7 @@ class MainWindow(QMainWindow):
         self._details_form_container: QWidget | None = None
 
         self._search_input = QLineEdit()
-        self._search_input.setPlaceholderText("Search by Name or App ID")
+        self._search_input.setPlaceholderText(_("Search by Name or App ID"))
         search_icon = QIcon.fromTheme(
             "edit-find",
             self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogContentsView),
@@ -186,14 +187,14 @@ class MainWindow(QMainWindow):
         filter_button_icon = QIcon(
             monochrome_icon_pixmap(filter_icon, 24, filter_icon_color, right_padding=0)
         )
-        self._filter_button = QPushButton(filter_button_icon, "Games Only")
+        self._filter_button = QPushButton(filter_button_icon, _("Games Only"))
         self._filter_button.setSizePolicy(
             QSizePolicy.Policy.Fixed,
             QSizePolicy.Policy.Fixed,
         )
         self._filter_button.setMinimumHeight(40)
         self._filter_button.setIconSize(QSize(24, 24))
-        self._filter_button.setToolTip("Show only games with metadata")
+        self._filter_button.setToolTip(_("Show only games with metadata"))
         self._filter_button.setCheckable(True)
         self._filter_button.toggled.connect(
             lambda _checked: self._apply_table_filter(self._search_input.text())
@@ -201,7 +202,7 @@ class MainWindow(QMainWindow):
         self._appinfo_required_widgets.append(self._filter_button)
 
         self._table = QTableWidget(0, 2)
-        self._table.setHorizontalHeaderLabels(["App ID", "Name"])
+        self._table.setHorizontalHeaderLabels([_("App ID"), _("Name")])
         self._table.verticalHeader().setVisible(False)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -250,7 +251,7 @@ class MainWindow(QMainWindow):
         )
         empty_search_overlay = EmptyStateOverlay(
             QIcon(monochrome_icon_pixmap(empty_search_icon, 48, search_icon_color)),
-            "No Results Found",
+            _("No Results Found"),
             parent=table_stack,
         )
         empty_search_overlay.hide()
@@ -272,7 +273,7 @@ class MainWindow(QMainWindow):
         details_outer_layout.setSpacing(10)
         details_outer_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        details_heading = QLabel("Details")
+        details_heading = QLabel(_("Details"))
         details_heading.setStyleSheet("font-size: 16px; font-weight: 700;")
         details_outer_layout.addWidget(details_heading)
 
@@ -330,18 +331,18 @@ class MainWindow(QMainWindow):
         )
 
         fields = (
-            ("name", "Name"),
-            ("appid", "App ID"),
+            ("name", _("Name")),
+            ("appid", _("App ID")),
             ("_separator_name_icon", ""),
-            ("icon_path", "Icon"),
+            ("icon_path", _("Icon")),
             ("_separator_1", ""),
-            ("sort_as", "Sort As"),
-            ("aliases", "Aliases"),
+            ("sort_as", _("Sort As")),
+            ("aliases", _("Aliases")),
             ("_separator_2", ""),
-            ("developer", "Developer"),
-            ("publisher", "Publisher"),
+            ("developer", _("Developer")),
+            ("publisher", _("Publisher")),
             ("_separator_3", ""),
-            ("release_date", "Release Date"),
+            ("release_date", _("Release Date")),
         )
         for key, title in fields:
             if key.startswith("_separator_"):
@@ -425,7 +426,7 @@ class MainWindow(QMainWindow):
             details_layout.addRow(title_label, row_value_widget)
             self._detail_labels[key] = value_label
 
-        assets_heading = QLabel("Assets")
+        assets_heading = QLabel(_("Assets"))
         assets_heading.setStyleSheet("font-size: 16px; font-weight: 700;")
         self._assets_heading = assets_heading
         details_outer_layout.addWidget(assets_heading)
@@ -492,7 +493,9 @@ class MainWindow(QMainWindow):
             asset_box_layout.addWidget(preview_label)
             return asset_box
 
-        header_box = create_asset_box("header_path", "Header", (460, 215), 460, 215, 16)
+        header_box = create_asset_box(
+            "header_path", _("Header"), (460, 215), 460, 215, 16
+        )
         header_box.setMinimumWidth(360)
         header_box.setMaximumWidth(460)
         header_box.setSizePolicy(
@@ -505,7 +508,7 @@ class MainWindow(QMainWindow):
         assets_layout.addWidget(
             create_asset_box(
                 "hero_path",
-                "Hero",
+                _("Hero"),
                 (384, 124),
                 96,
                 31,
@@ -560,7 +563,7 @@ class MainWindow(QMainWindow):
                 metadata_icon, 24, filter_icon_color, right_padding=0
             )
         )
-        edit_metadata_button = QPushButton(metadata_button_icon, "Edit Metadata")
+        edit_metadata_button = QPushButton(metadata_button_icon, _("Edit Metadata"))
         edit_metadata_button.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
@@ -578,7 +581,7 @@ class MainWindow(QMainWindow):
         assets_button_icon = QIcon(
             monochrome_icon_pixmap(assets_icon, 24, filter_icon_color, right_padding=0)
         )
-        edit_assets_button = QPushButton(assets_button_icon, "Edit Assets")
+        edit_assets_button = QPushButton(assets_button_icon, _("Edit Assets"))
         edit_assets_button.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Fixed,
@@ -606,8 +609,8 @@ class MainWindow(QMainWindow):
         if appid is None:
             show_information(
                 self,
-                "Edit Metadata",
-                "Select an app to view its metadata.",
+                _("Edit Metadata"),
+                _("Select an app to view its metadata."),
             )
             return
 
@@ -616,8 +619,8 @@ class MainWindow(QMainWindow):
         if not isinstance(raw_metadata, dict):
             show_information(
                 self,
-                "Edit Metadata",
-                "No metadata is available for the selected app.",
+                _("Edit Metadata"),
+                _("No metadata is available for the selected app."),
             )
             return
 
@@ -659,13 +662,13 @@ class MainWindow(QMainWindow):
         menu.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self._add_table_context_menu_action(
             menu,
-            "Edit Metadata",
+            _("Edit Metadata"),
             metadata_icon,
             lambda: self._open_edit_metadata_dialog(),
         )
         self._add_table_context_menu_action(
             menu,
-            "Edit Assets",
+            _("Edit Assets"),
             assets_icon,
             lambda: self._open_edit_assets_dialog(),
         )
@@ -849,7 +852,7 @@ class MainWindow(QMainWindow):
                         old_value=old_value,
                         new_value=new_value,
                     )
-                    self._show_status_message("Metadata saved")
+                    self._show_status_message(_("Metadata saved"))
                 return True
 
             changes = [
@@ -870,9 +873,9 @@ class MainWindow(QMainWindow):
                 new_value=new_value,
             )
             self._refresh_app_from_disk(appid)
-            self._show_status_message("Metadata saved")
+            self._show_status_message(_("Metadata saved"))
         except Exception as exc:
-            show_critical(self, "Edit Details", str(exc))
+            show_critical(self, _("Edit Details"), str(exc))
             editor.setText(old_text)
             return False
 
@@ -946,14 +949,16 @@ class MainWindow(QMainWindow):
 
         accepted = confirm_warning(
             self,
-            "Edit Metadata",
-            "Steam is currently running and may overwrite changes.",
+            _("Edit Metadata"),
+            _("Steam is currently running and may overwrite changes."),
             informative_text=(
-                "It is recommended to close Steam before making changes to "
-                "appinfo.vdf.\n\nDo you want to write changes anyway?"
+                _(
+                    "It is recommended to close Steam before making changes to "
+                    "appinfo.vdf.\n\nDo you want to write changes anyway?"
+                )
             ),
-            accept_text="Write Anyway",
-            reject_text="Cancel",
+            accept_text=_("Write Anyway"),
+            reject_text=_("Cancel"),
         )
         if accepted:
             self._allow_appinfo_write_while_steam_running = True
@@ -965,8 +970,8 @@ class MainWindow(QMainWindow):
         if appid is None:
             show_information(
                 self,
-                "Edit Assets",
-                "Select an app to view its assets.",
+                _("Edit Assets"),
+                _("Select an app to view its assets."),
             )
             return
 
@@ -974,8 +979,8 @@ class MainWindow(QMainWindow):
         if details is None:
             show_information(
                 self,
-                "Edit Assets",
-                "No asset information is available for the selected app.",
+                _("Edit Assets"),
+                _("No asset information is available for the selected app."),
             )
             return
 
@@ -1635,6 +1640,7 @@ class MainWindow(QMainWindow):
 
 
 def main() -> int:
+    configure_gettext()
     parser = argparse.ArgumentParser(prog="steammetadatatool-gui")
     parser.add_argument(
         "--version",
@@ -1645,23 +1651,23 @@ def main() -> int:
     action_group.add_argument(
         "--apply-metadata",
         action="store_true",
-        help=("Apply all changes from the app data metadata.json and exit"),
+        help=_("Apply all changes from the app data metadata.json and exit"),
     )
     action_group.add_argument(
         "--optimize-assets",
         action="store_true",
-        help=("Resize custom asset files to the minimum required dimensions"),
+        help=_("Resize custom asset files to the minimum required dimensions"),
     )
     action_group.add_argument(
         "--import-positions",
         dest="import_positions",
         action="store_true",
-        help="Import logo position files into the local app data assets folder",
+        help=_("Import logo position files into the local app data assets folder"),
     )
     parser.add_argument(
         "path",
         nargs="?",
-        help="Path to appinfo.vdf (defaults to auto-detected Steam install)",
+        help=_("Path to appinfo.vdf (defaults to auto-detected Steam install)"),
     )
     args = parser.parse_args()
 

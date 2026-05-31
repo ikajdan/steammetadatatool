@@ -19,7 +19,7 @@ SPDX-License-Identifier: CC0-1.0
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <developer id="io.github.ikajdan">
-    <name>Ignacy Kajdan</name>
+    <name translate="no">Ignacy Kajdan</name>
   </developer>
   <url type="homepage">https://github.com/ikajdan/steammetadatatool</url>
   <url type="bugtracker">https://github.com/ikajdan/steammetadatatool/issues</url>
@@ -37,7 +37,7 @@ SPDX-License-Identifier: CC0-1.0
     <category>Game</category>
   </categories>
   <keywords>
-    <keyword>Steam</keyword>
+    <keyword>steam</keyword>
     <keyword>metadata</keyword>
     <keyword>appinfo</keyword>
     <keyword>library</keyword>

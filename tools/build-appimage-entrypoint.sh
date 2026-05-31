@@ -132,6 +132,16 @@ install -Dm644 data/io.github.ikajdan.steammetadatatool.metainfo.xml \
     AppDir/usr/share/metainfo/io.github.ikajdan.steammetadatatool.metainfo.xml
 install -Dm644 data/sc-apps-steammetadatatool.svg \
     AppDir/usr/share/icons/hicolor/scalable/apps/steammetadatatool.svg
+for mo_file in data/i18n/*/LC_MESSAGES/steammetadatatool.mo; do
+    if [ ! -f "${mo_file}" ]; then
+        continue
+    fi
+
+    locale_name="${mo_file#data/i18n/}"
+    locale_name="${locale_name%%/*}"
+    install -Dm644 "${mo_file}" \
+        "AppDir/usr/share/locale/${locale_name}/LC_MESSAGES/steammetadatatool.mo"
+done
 cp AppDir/usr/share/applications/io.github.ikajdan.steammetadatatool.desktop \
     AppDir/io.github.ikajdan.steammetadatatool.desktop
 cp AppDir/usr/share/icons/hicolor/scalable/apps/steammetadatatool.svg \
@@ -150,6 +160,7 @@ export XDG_DATA_DIRS="${APPDIR}/usr/local/share:${APPDIR}/usr/share:${XDG_DATA_D
 export QT_QPA_PLATFORMTHEME=""
 export QT_SCALE_FACTOR_ROUNDING_POLICY=PassThrough
 export QT_PLUGIN_PATH="${PYTHON_HOME}/lib/python3.11/site-packages/PySide6/Qt/plugins"
+export STEAMMETADATATOOL_TRANSLATIONS_DIR="${APPDIR}/usr/share/locale"
 export LD_LIBRARY_PATH="${PYTHON_HOME}/lib:${PYTHON_HOME}/lib/python3.11/site-packages/PySide6:${PYTHON_HOME}/lib/python3.11/site-packages/PySide6/Qt/lib:${PYTHON_HOME}/lib/python3.11/site-packages/shiboken6:${APPDIR}/usr/lib/x86_64-linux-gnu:${APPDIR}/lib/x86_64-linux-gnu:${APPDIR}/lib/x86_64:${LD_LIBRARY_PATH:-}"
 
 exec /lib64/ld-linux-x86-64.so.2 "${PYTHON_HOME}/bin/python3.11" -m steammetadatatool.gui.main "$@"

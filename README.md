@@ -43,6 +43,7 @@ SPDX-License-Identifier: GPL-3.0-or-later
   <a href="#installation">Installation</a> •
   <a href="#usage">Usage</a> •
   <a href="#editing">Editing</a> •
+  <a href="#translating">Translating</a> •
   <a href="#license">License</a>
 </p>
 
@@ -64,12 +65,12 @@ The GUI provides a searchable app list, metadata filtering, app detail preview, 
 ## Screenshots
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/7cdf595d-8101-456c-8994-a22b99442877" width="49%">
-  <img src="https://github.com/user-attachments/assets/06192c40-c9cc-4f9e-9fba-60032736d436" width="49%">
+  <img src="https://github.com/user-attachments/assets/8e6ef1ce-f1ac-4034-ae84-0a2abcca3270" width="49%">
+  <img src="https://github.com/user-attachments/assets/59289212-0ea5-4145-a33a-e61a3ed4b880" width="49%">
 </p>
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/2f4829a8-d177-4f06-a551-a5a429415d13" width="49%">
+  <img src="https://github.com/user-attachments/assets/6de23731-a641-4ba8-9be1-f12e1d425511" width="49%">
 </p>
 
 ## Installation
@@ -116,8 +117,6 @@ To use the windowed GUI:
 uv run --extra gui steammetadatatool-gui
 ```
 
-The main window shows a list of installed apps with their names and IDs. Clicking on an app displays its metadata in the right pane, including library assets. The _Edit Metadata_ button opens a dialog to modify metadata fields. The _Edit Assets_ button allows setting custom library artwork by selecting image files for each asset type.
-
 #### Library Assets
 
 Steam library assets are images that represent games in the Steam library. Each asset type has specific size requirements:
@@ -136,14 +135,6 @@ The full specification can be found at: <https://partner.steamgames.com/doc/stor
 > Steam Library asset changes might not refresh immediately in the Steam client.
 > If updated artwork does not appear right away, switch to another game and back,
 > or restart the Steam client.
-
-### Backup Strategy
-
-Before overwriting `appinfo.vdf`, SteamMetadataTool creates a timestamped backup next to the original.
-
-The GUI creates at most one backup per day to avoid clutter during repeated
-edits. The CLI creates a backup for each direct overwrite unless `--no-backup`
-is used.
 
 ## Editing
 
@@ -217,6 +208,34 @@ uv run steammetadatatool-cli \
   --name "Counter-Strike 1.6" \
   --aliases "cs, 16" \
   --write-out /tmp/appinfo.vdf
+```
+
+## Translating
+
+Translations are managed with gettext files under `data/i18n`. After changing
+user-facing strings, refresh the template:
+
+```bash
+./tools/manage-translations.sh extract
+```
+
+Start a new locale from the template, using a gettext locale name such as `pl_PL`:
+
+```bash
+./tools/manage-translations.sh init LOCALE
+```
+
+Update existing `.po` files after source string changes:
+
+```bash
+./tools/manage-translations.sh update
+```
+
+Compile translations before testing or packaging. This writes `.mo` files and
+refreshes translated desktop and metainfo entries:
+
+```bash
+./tools/manage-translations.sh compile
 ```
 
 ## License

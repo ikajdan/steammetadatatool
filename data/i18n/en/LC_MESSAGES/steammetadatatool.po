@@ -1,0 +1,378 @@
+# SPDX-FileCopyrightText: 2026 Ignacy Kajdan <ignacy.kajdan@gmail.com>
+# SPDX-License-Identifier: GPL-3.0-or-later
+msgid ""
+msgstr ""
+"Project-Id-Version: steammetadatatool\n"
+"Report-Msgid-Bugs-To: https://github.com/ikajdan/steammetadatatool/issues\n"
+"POT-Creation-Date: 2026-05-31 23:01+0200\n"
+"PO-Revision-Date: 2026-05-07 23:18+0200\n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: src/steammetadatatool/cli/main.py:33
+msgid "A tool for reading and editing Steam client metadata."
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:43 src/steammetadatatool/gui/main.py:1670
+msgid "Path to appinfo.vdf (defaults to auto-detected Steam install)"
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:45
+msgid "Filter by appid"
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:47
+msgid "Override common.name"
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:49
+msgid "Override the sort-as name"
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:54
+msgid "Override aliases (comma-separated or JSON array)"
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:59
+msgid "Override the original release date (YYYY-MM-DD)"
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:64
+msgid "Override the release date (YYYY-MM-DD)"
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:72
+msgid ""
+"Generic PATH=VALUE override (dot-separated PATH, VALUE can be JSON or a "
+"plain string)"
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:79
+msgid "Path to the JSON file containing metadata overrides"
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:86
+msgid ""
+"Write a modified appinfo.vdf to this path instead of overwriting the input"
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:93
+msgid "Overwrite appinfo.vdf without creating a timestamped backup"
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:99
+msgid "Print modified records without writing any files"
+msgstr ""
+
+#: src/steammetadatatool/cli/main.py:105
+msgid "Print the output as JSON instead of plain text"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:642
+msgid "Selected asset"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:894
+msgid "Open Assets Folder"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:934
+msgid "Capsule"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:935
+#: src/steammetadatatool/gui/main.py:497
+msgid "Header"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:936
+#: src/steammetadatatool/gui/main.py:511
+msgid "Hero"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:937
+msgid "Logo"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:938
+#: src/steammetadatatool/gui/main.py:337
+msgid "Icon"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:971
+#: src/steammetadatatool/gui/dialogs/edit_metadata.py:393
+msgid "Apply"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:988
+#: src/steammetadatatool/gui/dialogs/edit_metadata.py:412
+msgid "Close"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1108
+msgid "Unapplied"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1138
+msgid "Show previous assets"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1158
+msgid "Show next assets"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1358
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1381
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1392
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1465
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1523
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1535
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1544
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1551
+#: src/steammetadatatool/gui/main.py:584 src/steammetadatatool/gui/main.py:671
+#: src/steammetadatatool/gui/main.py:973 src/steammetadatatool/gui/main.py:982
+msgid "Edit Assets"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1358
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1465
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1535
+msgid "No app id is available."
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1363
+msgid "Select Asset Image"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1382
+#, python-brace-format
+msgid "Unsupported asset extension: {suffix}"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1458
+#: src/steammetadatatool/gui/dialogs/edit_metadata.py:723
+#, python-brace-format
+msgid "{count} unapplied"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_assets.py:1552
+#, python-brace-format
+msgid ""
+"Could not open asset folder:\n"
+"{path}"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_metadata.py:293
+msgid "Search by Key or Value"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_metadata.py:314
+msgid "Key"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_metadata.py:314
+msgid "Value"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_metadata.py:370
+#: src/steammetadatatool/gui/main.py:254
+msgid "No Results Found"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/edit_metadata.py:634
+#: src/steammetadatatool/gui/dialogs/edit_metadata.py:637
+#: src/steammetadatatool/gui/main.py:566 src/steammetadatatool/gui/main.py:612
+#: src/steammetadatatool/gui/main.py:622 src/steammetadatatool/gui/main.py:665
+#: src/steammetadatatool/gui/main.py:952
+msgid "Edit Metadata"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/missing_appinfo.py:34
+msgid "Select appinfo.vdf"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/missing_appinfo.py:36
+msgid "Steam appinfo (appinfo.vdf);;VDF files (*.vdf);;All files (*)"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/missing_appinfo.py:61
+msgid "Steam Metadata File not Found"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/missing_appinfo.py:68
+msgid ""
+"SteamMetadataTool needs appinfo.vdf file to list apps and show the metadata. "
+"The file could not be found automatically."
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/missing_appinfo.py:73
+msgid ""
+"SteamMetadataTool needs appinfo.vdf file to list apps and show the metadata. "
+"The selected path is not a valid appinfo.vdf file:"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/missing_appinfo.py:101
+msgid "Choose a correct appinfo.vdf file to continue."
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/missing_appinfo.py:111
+msgid "Select File…"
+msgstr ""
+
+#: src/steammetadatatool/gui/dialogs/missing_appinfo.py:116
+msgid "Quit"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:168
+msgid "Search by Name or App ID"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:190
+msgid "Games Only"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:197
+msgid "Show only games with metadata"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:205 src/steammetadatatool/gui/main.py:335
+msgid "App ID"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:205 src/steammetadatatool/gui/main.py:334
+msgid "Name"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:276
+msgid "Details"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:339
+msgid "Sort As"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:340
+msgid "Aliases"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:342
+msgid "Developer"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:343
+msgid "Publisher"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:345
+msgid "Release Date"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:429
+msgid "Assets"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:613
+msgid "Select an app to view its metadata."
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:623
+msgid "No metadata is available for the selected app."
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:855 src/steammetadatatool/gui/main.py:876
+msgid "Metadata saved"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:878
+msgid "Edit Details"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:953
+msgid "Steam is currently running and may overwrite changes."
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:956
+msgid ""
+"It is recommended to close Steam before making changes to appinfo.vdf.\n"
+"\n"
+"Do you want to write changes anyway?"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:960
+msgid "Write Anyway"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:961
+msgid "Cancel"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:974
+msgid "Select an app to view its assets."
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:983
+msgid "No asset information is available for the selected app."
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:1654
+msgid "Apply all changes from the app data metadata.json and exit"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:1659
+msgid "Resize custom asset files to the minimum required dimensions"
+msgstr ""
+
+#: src/steammetadatatool/gui/main.py:1665
+msgid "Import logo position files into the local app data assets folder"
+msgstr ""
+
+#: src/steammetadatatool/gui/widgets/loading.py:72
+msgid "Loading apps…"
+msgstr ""
+
+#: data/io.github.ikajdan.steammetadatatool.desktop:5
+#: data/io.github.ikajdan.steammetadatatool.desktop:6
+#: data/io.github.ikajdan.steammetadatatool.metainfo.xml:8
+msgid "SteamMetadataTool"
+msgstr ""
+
+#: data/io.github.ikajdan.steammetadatatool.desktop:7
+#: data/io.github.ikajdan.steammetadatatool.metainfo.xml:10
+msgid "A tool for managing Steam client game metadata and library artwork"
+msgstr ""
+
+#: data/io.github.ikajdan.steammetadatatool.metainfo.xml:12
+msgid ""
+"SteamMetadataTool is a desktop utility for inspecting and customizing the "
+"game metadata used by the Steam client. It reads the local appinfo.vdf "
+"database, shows installed app records in a searchable interface, and allows "
+"users to apply custom metadata overrides and artwork to their Steam library."
+msgstr ""
+
+#: data/io.github.ikajdan.steammetadatatool.metainfo.xml:40
+msgid "steam"
+msgstr ""
+
+#: data/io.github.ikajdan.steammetadatatool.metainfo.xml:41
+msgid "metadata"
+msgstr ""
+
+#: data/io.github.ikajdan.steammetadatatool.metainfo.xml:42
+msgid "appinfo"
+msgstr ""
+
+#: data/io.github.ikajdan.steammetadatatool.metainfo.xml:43
+msgid "library"
+msgstr ""
+
+#: data/io.github.ikajdan.steammetadatatool.metainfo.xml:44
+msgid "artwork"
+msgstr ""
+
+#: data/io.github.ikajdan.steammetadatatool.metainfo.xml:45
+msgid "games"
+msgstr ""

@@ -67,6 +67,7 @@ from steammetadatatool.gui.steam.assets import (
 )
 from steammetadatatool.gui.steam.paths import steam_grid_dir
 from steammetadatatool.gui.widgets.toast import ToastMessage
+from steammetadatatool.i18n import _
 
 _CUSTOM_ASSET_DIRS = {
     "capsule_path": "capsule",
@@ -638,7 +639,7 @@ class AssetVariantFrame(QFrame):
             self.update()
             return
 
-        self.setToolTip("Selected asset" if selected and show_active_frame else "")
+        self.setToolTip(_("Selected asset") if selected and show_active_frame else "")
         self.update()
 
     def paintEvent(self, event) -> None:
@@ -890,7 +891,7 @@ class EditAssetsDialog(QDialog):
         )
         open_folder_button = QPushButton(
             QIcon(monochrome_icon_pixmap(folder_icon, 18, action_icon_color, 6)),
-            "Open Assets Folder",
+            _("Open Assets Folder"),
             header_row,
         )
         open_folder_button.setSizePolicy(
@@ -930,11 +931,11 @@ class EditAssetsDialog(QDialog):
         content_layout.addStretch(1)
 
         asset_specs: list[tuple[str, str, tuple[int, int], tuple[int, int] | None]] = [
-            ("capsule_path", "Capsule", (230, 345), (2, 3)),
-            ("header_path", "Header", (380, 178), (460, 215)),
-            ("hero_path", "Hero", (720, 232), (96, 31)),
-            ("logo_path", "Logo", (320, 100), None),
-            ("icon_path", "Icon", (48, 48), None),
+            ("capsule_path", _("Capsule"), (230, 345), (2, 3)),
+            ("header_path", _("Header"), (380, 178), (460, 215)),
+            ("hero_path", _("Hero"), (720, 232), (96, 31)),
+            ("logo_path", _("Logo"), (320, 100), None),
+            ("icon_path", _("Icon"), (48, 48), None),
         ]
 
         for key, title, size, ratio in asset_specs:
@@ -967,7 +968,7 @@ class EditAssetsDialog(QDialog):
         )
         self._apply_button = QPushButton(
             QIcon(monochrome_icon_pixmap(apply_icon, 24, action_icon_color)),
-            "Apply",
+            _("Apply"),
             dialog_actions,
         )
         self._apply_button.setSizePolicy(
@@ -984,7 +985,7 @@ class EditAssetsDialog(QDialog):
         )
         cancel_button = QPushButton(
             QIcon(monochrome_icon_pixmap(cancel_icon, 24, action_icon_color)),
-            "Cancel",
+            _("Close"),
             dialog_actions,
         )
         cancel_button.setSizePolicy(
@@ -1104,7 +1105,7 @@ class EditAssetsDialog(QDialog):
         title_label.setStyleSheet("font-size: 16px; font-weight: 600;")
         title_row_layout.addWidget(title_label)
 
-        unapplied_label = QLabel("Unapplied", title_row)
+        unapplied_label = QLabel(_("Unapplied"), title_row)
         unapplied_label.setStyleSheet(
             "font-size: 12px;"
             " font-weight: 600;"
@@ -1134,7 +1135,7 @@ class EditAssetsDialog(QDialog):
         controls_layout.setSpacing(10)
 
         left_button = AssetNavButton(Qt.ArrowType.LeftArrow, controls_row)
-        left_button.setToolTip("Show previous assets")
+        left_button.setToolTip(_("Show previous assets"))
         left_button.clicked.connect(lambda: self._scroll_asset_variants(key, -1))
         controls_layout.addWidget(left_button, 0, Qt.AlignmentFlag.AlignVCenter)
 
@@ -1154,7 +1155,7 @@ class EditAssetsDialog(QDialog):
         controls_layout.addWidget(variants_scroll, 1)
 
         right_button = AssetNavButton(Qt.ArrowType.RightArrow, controls_row)
-        right_button.setToolTip("Show next assets")
+        right_button.setToolTip(_("Show next assets"))
         right_button.clicked.connect(lambda: self._scroll_asset_variants(key, 1))
         controls_layout.addWidget(right_button, 0, Qt.AlignmentFlag.AlignVCenter)
 
@@ -1354,12 +1355,12 @@ class EditAssetsDialog(QDialog):
 
     def _add_asset_variant(self, asset_key: str) -> None:
         if self._appid is None:
-            show_warning(self, "Edit Assets", "No app id is available.")
+            show_warning(self, _("Edit Assets"), _("No app id is available."))
             return
 
         selected_path, _selected_filter = QFileDialog.getOpenFileName(
             self,
-            "Select Asset Image",
+            _("Select Asset Image"),
             str(_assets_dir() / self._appid / _custom_asset_key_name(asset_key)),
             (
                 _CUSTOM_ICON_ASSET_IMAGE_FILTER
@@ -1377,8 +1378,10 @@ class EditAssetsDialog(QDialog):
         if source_path.suffix.lower() not in supported_suffixes:
             show_warning(
                 self,
-                "Edit Assets",
-                f"Unsupported asset extension: {source_path.suffix}",
+                _("Edit Assets"),
+                _("Unsupported asset extension: {suffix}").format(
+                    suffix=source_path.suffix
+                ),
             )
             return
 
@@ -1386,7 +1389,7 @@ class EditAssetsDialog(QDialog):
             target_path = _custom_asset_target(self._appid, asset_key, source_path)
             _replace_with_file_copy(source_path, target_path)
         except OSError as exc:
-            show_critical(self, "Edit Assets", str(exc))
+            show_critical(self, _("Edit Assets"), str(exc))
             return
 
         self._custom_assets_by_key.setdefault(asset_key, []).append(str(target_path))
@@ -1451,13 +1454,15 @@ class EditAssetsDialog(QDialog):
             label.setVisible(asset_key in unapplied_asset_keys)
         unapplied_count = len(unapplied_asset_keys)
         if self._unapplied_count_label is not None:
-            self._unapplied_count_label.setText(f"{unapplied_count} unapplied")
+            self._unapplied_count_label.setText(
+                _("{count} unapplied").format(count=unapplied_count)
+            )
             self._unapplied_count_label.setVisible(unapplied_count > 0)
         self._apply_button.setEnabled(bool(unapplied_asset_keys))
 
     def _apply_selected_assets(self) -> None:
         if self._appid is None:
-            show_warning(self, "Edit Assets", "No app id is available.")
+            show_warning(self, _("Edit Assets"), _("No app id is available."))
             return
 
         unapplied_asset_keys = self._unapplied_asset_keys()
@@ -1515,7 +1520,7 @@ class EditAssetsDialog(QDialog):
                 dict(self._selected_custom_paths_by_key),
             )
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            show_critical(self, "Edit Assets", str(exc))
+            show_critical(self, _("Edit Assets"), str(exc))
             return
 
         self._initial_selected_custom_paths_by_key = dict(
@@ -1527,7 +1532,7 @@ class EditAssetsDialog(QDialog):
 
     def _open_asset_folder(self) -> None:
         if self._appid is None:
-            show_warning(self, "Edit Assets", "No app id is available.")
+            show_warning(self, _("Edit Assets"), _("No app id is available."))
             return
 
         app_assets_dir = _assets_dir() / self._appid
@@ -1536,15 +1541,15 @@ class EditAssetsDialog(QDialog):
             for dirname in sorted(set(_CUSTOM_ASSET_DIRS.values()) | {"preset"}):
                 (app_assets_dir / dirname).mkdir(parents=True, exist_ok=True)
         except OSError as exc:
-            show_critical(self, "Edit Assets", str(exc))
+            show_critical(self, _("Edit Assets"), str(exc))
             return
 
         did_open = _open_local_directory(app_assets_dir)
         if not did_open:
             show_warning(
                 self,
-                "Edit Assets",
-                f"Could not open asset folder:\n{app_assets_dir}",
+                _("Edit Assets"),
+                _("Could not open asset folder:\n{path}").format(path=app_assets_dir),
             )
 
     def _show_status_message(self, message: str) -> None:
