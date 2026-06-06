@@ -5,7 +5,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from steammetadatatool.gui.steam.paths import steam_librarycache_dir_for_app
+from steammetadatatool.gui.steam.paths import (
+    steam_grid_dir,
+    steam_librarycache_dir_for_app,
+)
 
 STEAM_GRID_BASENAME_SUFFIXES = {
     "capsule_path": "p",
@@ -85,7 +88,21 @@ def default_icon_path_for_app(appid: str | int) -> Path | None:
     return original_icon_path if original_icon_path.is_file() else cached_icon_path
 
 
-def asset_paths_for_app(appid: int) -> dict[str, str]:
+def _find_grid_asset_file(grid_dir: Path, appid: str, asset_key: str) -> str:
+    suffix = STEAM_GRID_BASENAME_SUFFIXES.get(asset_key)
+    if suffix is None:
+        return "-"
+
+    base_path = grid_dir / f"{appid}{suffix}"
+    for extension in sorted(STEAM_GRID_EXTENSIONS):
+        candidate = base_path.with_suffix(extension)
+        if candidate.is_file():
+            return str(candidate)
+
+    return "-"
+
+
+def default_asset_paths_for_app(appid: int) -> dict[str, str]:
     app_cache_dir = steam_librarycache_dir_for_app(str(appid))
     if app_cache_dir is None:
         return {
@@ -113,3 +130,20 @@ def asset_paths_for_app(appid: int) -> dict[str, str]:
         "logo_path": _find_asset_file(app_cache_dir, "logo.png", "logo_2x.png"),
         "icon_path": str(default_icon_path) if default_icon_path is not None else "-",
     }
+
+
+def asset_paths_for_app(appid: int, account_id: str | None = None) -> dict[str, str]:
+    appid_str = str(appid)
+    asset_paths = default_asset_paths_for_app(appid)
+
+    try:
+        grid_dir = steam_grid_dir(account_id)
+    except FileNotFoundError:
+        return asset_paths
+
+    for asset_key in STEAM_GRID_BASENAME_SUFFIXES:
+        grid_asset_path = _find_grid_asset_file(grid_dir, appid_str, asset_key)
+        if grid_asset_path != "-":
+            asset_paths[asset_key] = grid_asset_path
+
+    return asset_paths

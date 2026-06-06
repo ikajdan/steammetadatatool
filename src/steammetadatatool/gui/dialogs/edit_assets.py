@@ -62,7 +62,7 @@ from steammetadatatool.gui.steam.assets import (
 )
 from steammetadatatool.gui.steam.assets import (
     cached_icon_path_for_app,
-    default_icon_path_for_app,
+    default_asset_paths_for_app,
     original_icon_path_for_cached_icon,
 )
 from steammetadatatool.gui.steam.paths import steam_grid_dir
@@ -270,13 +270,15 @@ def _custom_asset_paths_for_app(appid: str | None) -> dict[str, list[str]]:
     return custom_assets
 
 
-def _steam_grid_target(appid: str, asset_key: str, source: Path) -> Path:
+def _steam_grid_target(
+    appid: str, asset_key: str, source: Path, account_id: str | None
+) -> Path:
     source_suffix = source.suffix.lower()
     if source_suffix not in _STEAM_GRID_EXTENSIONS:
         raise ValueError(f"Unsupported Steam grid asset extension: {source.suffix}")
 
     return (
-        steam_grid_dir()
+        steam_grid_dir(account_id)
         / f"{appid}{_STEAM_GRID_BASENAME_SUFFIXES[asset_key]}{source_suffix}"
     )
 
@@ -794,6 +796,7 @@ class EditAssetsDialog(QDialog):
         *,
         appid: str | None = None,
         app_name: str | None = None,
+        steam_account_id: str | None = None,
         initial_asset_key: str | None = None,
         parent: QWidget | None = None,
     ) -> None:
@@ -820,12 +823,11 @@ class EditAssetsDialog(QDialog):
         self._initial_asset_key = initial_asset_key
         self._did_initial_asset_scroll = False
         self._initial_asset_scroll_attempts = 0
+        self._steam_account_id = steam_account_id
         self._appid = str(appid) if appid is not None else None
+        self._assets = dict(assets)
         if self._appid is not None:
-            default_icon_path = default_icon_path_for_app(self._appid)
-            if default_icon_path is not None:
-                assets = dict(assets)
-                assets["icon_path"] = str(default_icon_path)
+            self._assets.update(default_asset_paths_for_app(int(self._appid)))
         self._custom_assets_by_key = _custom_asset_paths_for_app(appid)
         self._selected_custom_paths_by_key: dict[str, Path] = {}
         self._default_selected_asset_keys: set[str] = set()
@@ -942,7 +944,7 @@ class EditAssetsDialog(QDialog):
             card = self._create_asset_card(
                 key=key,
                 title=title,
-                original_path=assets.get(key, "-"),
+                original_path=self._assets.get(key, "-"),
                 custom_paths=self._custom_assets_by_key.get(key, []),
                 size=size,
                 ratio=ratio,
@@ -1185,18 +1187,19 @@ class EditAssetsDialog(QDialog):
             )
         )
 
+        original_variant = self._create_asset_variant(
+            asset_key=key,
+            path=original_path,
+            size=size,
+            ratio=ratio,
+            is_current=key not in self._selected_custom_paths_by_key,
+            is_custom=False,
+            show_selection_frame=draw_variant_frame,
+            is_selectable=show_selection_frame,
+            parent=variants_row,
+        )
         variants_layout.addWidget(
-            self._create_asset_variant(
-                asset_key=key,
-                path=original_path,
-                size=size,
-                ratio=ratio,
-                is_current=key not in self._selected_custom_paths_by_key,
-                is_custom=False,
-                show_selection_frame=draw_variant_frame,
-                is_selectable=show_selection_frame,
-                parent=variants_row,
-            ),
+            original_variant,
             0,
             Qt.AlignmentFlag.AlignTop,
         )
@@ -1254,7 +1257,7 @@ class EditAssetsDialog(QDialog):
         placeholder_background_color: QColor | None = None,
         participates_in_selection: bool = True,
         is_add_placeholder: bool = False,
-    ) -> QWidget:
+    ) -> AssetVariantFrame:
         preview_width, preview_height = size
         variant = AssetVariantFrame(
             parent,
@@ -1470,7 +1473,7 @@ class EditAssetsDialog(QDialog):
             return
 
         try:
-            grid_dir = steam_grid_dir()
+            grid_dir = steam_grid_dir(self._steam_account_id)
             for asset_key in _STEAM_GRID_BASENAME_SUFFIXES:
                 if asset_key not in unapplied_asset_keys:
                     continue
@@ -1485,7 +1488,12 @@ class EditAssetsDialog(QDialog):
 
                 _replace_with_file_copy(
                     source_path,
-                    _steam_grid_target(self._appid, asset_key, source_path),
+                    _steam_grid_target(
+                        self._appid,
+                        asset_key,
+                        source_path,
+                        self._steam_account_id,
+                    ),
                     cleanup_grid_extensions=True,
                 )
 

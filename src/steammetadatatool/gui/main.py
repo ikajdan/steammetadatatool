@@ -72,6 +72,7 @@ from steammetadatatool.gui.dialogs.missing_appinfo import (
     select_appinfo_file_after_detection_failed,
     select_missing_appinfo_file,
 )
+from steammetadatatool.gui.dialogs.steam_user import SteamUserDialog
 from steammetadatatool.gui.models.app_details import (
     DETAIL_VALUE_LEFT_INSET,
     INLINE_DETAIL_EDITOR_STYLE,
@@ -91,6 +92,7 @@ from steammetadatatool.gui.services.metadata_apply import apply_metadata_file_si
 from steammetadatatool.gui.services.positions_importer import import_logo_position_files
 from steammetadatatool.gui.services.search import normalized_search_text
 from steammetadatatool.gui.services.theme import apply_theme
+from steammetadatatool.gui.steam.paths import steam_users
 from steammetadatatool.gui.steam.process import is_steam_running
 from steammetadatatool.gui.widgets.delegates import LeftPaddingItemDelegate
 from steammetadatatool.gui.widgets.empty_state import EmptyStateOverlay
@@ -105,7 +107,7 @@ from steammetadatatool.i18n import _, configure_gettext
 
 
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, *, steam_account_id: str | None = None) -> None:
         super().__init__()
         self.setWindowTitle("SteamMetadataTool")
         self.resize(1200, 560)
@@ -139,6 +141,7 @@ class MainWindow(QMainWindow):
         self._search_text = ""
         self._setting_details = False
         self._allow_appinfo_write_while_steam_running = False
+        self._steam_account_id = steam_account_id
         self._capsule_preview = RatioPreviewPixmapLabel(
             self._missing_asset_pixmap(32, 32),
             2,
@@ -994,6 +997,7 @@ class MainWindow(QMainWindow):
             },
             appid=details.get("appid") if details is not None else None,
             app_name=details.get("name") if details is not None else None,
+            steam_account_id=self._steam_account_id,
             initial_asset_key=initial_asset_key,
             parent=self,
         )
@@ -1699,7 +1703,16 @@ def main() -> int:
     app.setApplicationDisplayName("SteamMetadataTool")
     app.setDesktopFileName("io.github.ikajdan.steammetadatatool")
     apply_theme(app)
-    window = MainWindow()
+
+    detected_steam_users = steam_users()
+    steam_account_id = None
+    if detected_steam_users:
+        steam_user_dialog = SteamUserDialog(detected_steam_users)
+        if not steam_user_dialog.exec():
+            return 0
+        steam_account_id = steam_user_dialog.selected_account_id
+
+    window = MainWindow(steam_account_id=steam_account_id)
     initial_path_obj = Path(initial_path).expanduser() if initial_path else None
     if initial_path_obj is not None and not initial_path_obj.is_file():
         selected_path = select_missing_appinfo_file(window, initial_path_obj)

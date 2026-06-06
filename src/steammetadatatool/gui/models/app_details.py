@@ -13,7 +13,7 @@ from steammetadatatool.core.services import (
     metadata_values_from_change_entries,
     parse_aliases,
 )
-from steammetadatatool.gui.steam.assets import asset_paths_for_app
+from steammetadatatool.gui.steam.assets import default_asset_paths_for_app
 
 INLINE_EDIT_METADATA_KEYS = {
     "name": "appinfo.common.name",
@@ -263,7 +263,7 @@ def matches_game_filter(data: dict[str, Any]) -> bool:
 
 def details_for_app(app: Any) -> dict[str, Any]:
     name = (app.name or "").strip()
-    asset_paths = asset_paths_for_app(app.appid)
+    asset_paths = default_asset_paths_for_app(app.appid)
     release_date, release_date_key = release_date_details(app.data)
     return {
         "_raw_metadata": app.data,
