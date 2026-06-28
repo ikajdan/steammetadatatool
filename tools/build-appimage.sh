@@ -52,12 +52,27 @@ CONTAINER_REPO_DIR=/steammetadatatool
 DOCKER_IMAGE="${DOCKER_IMAGE:-docker.io/library/ubuntu:24.04}"
 
 
-cleanup() {
+remove_work_dir() {
+    if [ ! -e "${WORK_DIR}" ]; then
+        return
+    fi
+
+    if rm -rf "${WORK_DIR}" 2>/dev/null; then
+        return
+    fi
+
+    if ! command -v sudo >/dev/null 2>&1; then
+        printf '%s\n' "Could not remove ${WORK_DIR}; try removing it with elevated privileges." >&2
+        return 1
+    fi
+
+    sudo chown -R "$(id -u):$(id -g)" "${WORK_DIR}"
+    sudo chmod -R u+rwX "${WORK_DIR}"
     rm -rf "${WORK_DIR}"
 }
-trap cleanup EXIT INT TERM
+trap remove_work_dir EXIT INT TERM
 
-rm -rf "${WORK_DIR}"
+remove_work_dir
 mkdir -p "${WORK_DIR}"
 
 BUILD_CONTEXT_PATHS='
