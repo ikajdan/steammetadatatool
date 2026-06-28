@@ -23,6 +23,9 @@ SPDX-License-Identifier: CC0-1.0
   </developer>
   <url type="homepage">https://github.com/ikajdan/steammetadatatool</url>
   <url type="bugtracker">https://github.com/ikajdan/steammetadatatool/issues</url>
+  <releases>
+    <release version="1.0.0" date="2026-06-28" />
+  </releases>
   <launchable type="desktop-id">io.github.ikajdan.steammetadatatool.desktop</launchable>
   <provides>
     <id>io.github.ikajdan.steammetadatatool.desktop</id>
